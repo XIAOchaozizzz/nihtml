@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>灵巧手 WebBLE 控制台</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin-top: 20px; }
+        button { font-size: 18px; padding: 10px 20px; margin: 5px; border-radius: 8px; cursor: pointer; }
+        #connectBtn { background-color: #4CAF50; color: white; border: none; font-size: 20px; padding: 15px 30px; }
+        .cmdBtn { background-color: #008CBA; color: white; border: none; display: none; }
+        .debugBtn { background-color: #f39c12; color: white; border: none; display: none; }
+        .poseBtn { background-color: #9b59b6; color: white; border: none; display: none; }
+        .modeBtn { background-color: #ecf0f1; color: #333; border: 2px solid #bdc3c7; display: none; }
+        .modeBtn.active { background-color: #2980b9; color: white; border-color: #2980b9; }
+        #modeHint { font-size: 14px; color: #888; margin-bottom: 10px; }
+        #status { margin: 15px; font-weight: bold; color: #555; }
+        
+        #debugPanel, #posePanel {
+            display: none;
+            margin-top: 20px;
+            padding: 15px;
+            border: 2px dashed #f39c12;
+            border-radius: 10px;
+            background-color: #fdf5e6;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        #posePanel {
+            border-color: #9b59b6;
+            background-color: #f5eef8;
+        }
+        .slider-container {
+            margin: 15px 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .slider-container label { font-weight: bold; width: 120px; text-align: right; margin-right: 15px; }
+        .slider-container input[type=range] { flex-grow: 1; margin-right: 15px; }
+        .slider-container .val-num { width: 50px; text-align: left; }
+        .slider-container .val-pct { width: 45px; text-align: left; color: #666; font-size: 14px; }
+
+        #customPoseSection { margin-top: 12px; }
+        #customPoseSection h4 { margin: 8px 0; color: #7d3c98; font-size: 15px; }
+        .customPoseBtn { background-color: #16a085; color: white; border: none; display: none; }
+
+        #savePoseModal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.45);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        #savePoseModal.show { display: flex; }
+        .modal-box {
+            background: #fff;
+            border-radius: 12px;
+            padding: 24px;
+            width: min(90vw, 360px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+            text-align: left;
+        }
+        .modal-box h3 { margin-top: 0; text-align: center; }
+        .modal-box input[type=text] {
+            width: 100%;
+            box-sizing: border-box;
+            font-size: 16px;
+            padding: 10px;
+            margin: 12px 0 16px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+        }
+        .modal-actions { display: flex; gap: 10px; justify-content: center; }
+        .modal-actions button {
+            min-width: 100px;
+            margin: 0;
+        }
+        #confirmSavePoseBtn {
+            background-color: #bdc3c7;
+            color: #fff;
+            border: none;
+            cursor: not-allowed;
+        }
+        #confirmSavePoseBtn.enabled {
+            background-color: #2ecc71;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>🤖 灵巧手 WebBLE 控制台</h2>
+    <div id="status">状态: 未连接</div>
+    
+    <button id="connectBtn" onclick="connectBLE()">连接灵巧手</button>
+    <br>
+    
+    <!-- 基础控制按钮 -->
+    <div id="baseControls">
+        <!-- 新增模式切换选项 -->
+        <div style="margin-bottom: 15px;">
+            <div id="modeHint">当前模式: 未选中（手掌完全张开）</div>
+            <button class="modeBtn" id="modePower" onclick="toggleMode(0)">圆柱抓握</button>
+            <button class="modeBtn" id="modePinch" onclick="toggleMode(1)">二指抓握</button>
+            <button class="modeBtn" id="modePose" onclick="toggleMode(2)">Pose展示</button>
+        </div>
+
+        <div id="graspControls">
+        <button class="cmdBtn" onclick="sendActionCommand(1)">✊ 抓握 (Grasp)</button>
+        <button class="cmdBtn" onclick="sendActionCommand(2)">🖐️ 松开 (Release)</button>
+        <button class="cmdBtn" onclick="sendActionCommand(4)">🤖 重新开机归零</button>
+        <button class="cmdBtn" id="indexRehomeBtn" onclick="sendActionCommand(5)" style="background-color: #8e44ad; display: none;">👆 食指单独寻零</button>
+        </div>
+        <br><br>
+        <button class="debugBtn" id="enterDebugBtn" onclick="enterDebugMode()">🛠️ 进入位姿调试</button>
+    </div>
+
+    <!-- Pose 展示面板 -->
+    <div id="posePanel">
+        <h3>Pose 展示</h3>
+        <p style="font-size: 14px; color: #666;">点击按钮摆出预设手势，完成后保持姿态</p>
+        <button class="poseBtn" onclick="sendActionCommand(30)">☝️ 伸食指</button>
+        <button class="poseBtn" onclick="sendActionCommand(31)">👌 OK 手势</button>
+        <br>
+        <button class="poseBtn" onclick="sendActionCommand(32)">✌️ 耶手势</button>
+        <button class="poseBtn" onclick="sendActionCommand(33)">🤟 ILY 手势</button>
+        <div id="customPoseSection">
+            <h4>已保存的自定义姿态</h4>
+            <div id="customPoseButtons"></div>
+        </div>
+        <br><br>
+        <button class="cmdBtn" onclick="sendActionCommand(2)" style="display: inline-block; background-color: #34495e;">🔄 回到零点</button>
+    </div>
+
+    <!-- 调试面板 -->
+    <div id="debugPanel">
+        <h3>位姿动态调试</h3>
+        <p style="font-size: 14px; color: #666;">以五指张开准备姿态为基准：0=张开，向右拖=握紧方向</p>
+        
+        <!-- 滑块由 JS 动态生成 -->
+        <div id="sliders"></div>
+
+        <br>
+        <button style="background-color: #e74c3c; color: white; border: none;" onclick="exitDebugMode()">❌ 退出调试 (自动复位)</button>
+        <button style="background-color: #2ecc71; color: white; border: none;" onclick="openSavePoseModal()">💾 记录并保存当前姿态</button>
+    </div>
+
+    <!-- 保存姿态命名弹窗 -->
+    <div id="savePoseModal">
+        <div class="modal-box">
+            <h3>为当前姿态命名</h3>
+            <p style="font-size: 14px; color: #666; margin: 0;">将保存 7 个关节的 offset 偏置到 Flash，掉电不丢失。</p>
+            <input type="text" id="poseNameInput" maxlength="20" placeholder="例如：点赞手势" oninput="onPoseNameInput()">
+            <div class="modal-actions">
+                <button style="background-color: #95a5a6; color: white; border: none;" onclick="closeSavePoseModal()">取消</button>
+                <button id="confirmSavePoseBtn" onclick="confirmSavePose()">确定保存</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 定义我们将在 ESP32 代码中设置的专属 UUID
+        const SERVICE_UUID = '12345678-1234-5678-1234-56789abcdef0';
+        const CHARACTERISTIC_UUID = '12345678-1234-5678-1234-56789abcdef1';
+        const NOTIFY_CHARACTERISTIC_UUID = '12345678-1234-5678-1234-56789abcdef2';
+        let bleCharacteristic = null;
+        let bleNotifyCharacteristic = null;
+        let bleDevice = null;
+        let isDebugMode = false;
+        let activeMode = null;
+        let customPoses = [];
+        let poseListLoading = false;
+
+        const POSE_NOTIFY_HDR_LIST = 0x90;
+        const POSE_NOTIFY_ENTRY = 0x91;
+        const POSE_NOTIFY_LIST_END = 0x92;
+        const POSE_NOTIFY_SAVED = 0x93;
+        const POSE_NOTIFY_SAVE_FAIL = 0x94;
+
+        const modeNames = ['圆柱抓握', '二指抓握', 'Pose展示'];
+        const modeCmdIds = [20, 21, 22];
+        const deselectCmdId = 23;
+
+        const fingerNames = [
+            "拇指外展(0)", "拇指弯曲(1)", "拇指根部(2)",
+            "食指(3)", "中指(4)", "无名指(5)", "小指(6)"
+        ];
+
+        // 各关节调试量程（与 homing_ready.c READY_BACKOFF 一致）：0=张开准备姿态，最大=握拳方向
+        const fingerRanges = [
+            1206,  // 拇指外展(0)
+            1324,  // 拇指弯曲(1)
+            1371,  // 拇指根部(2)
+            3321,  // 食指(3)
+            3369,  // 中指(4)
+            3511,  // 无名指(5)
+            3298,  // 小指(6)
+        ];
+
+        function clampSliderValue(id, val) {
+            return Math.min(fingerRanges[id], Math.max(0, val));
+        }
+
+        function visualToPhysical(id, visual) {
+            return Math.round((visual / 100) * fingerRanges[id]);
+        }
+
+        // 初始化滑块
+        function initSliders() {
+            const container = document.getElementById('sliders');
+            container.innerHTML = '';
+            for (let i = 0; i < 7; i++) {
+                const div = document.createElement('div');
+                div.className = 'slider-container';
+                div.innerHTML = `
+                    <label>${fingerNames[i]}:</label>
+                    <input type="range" id="slider_${i}" min="0" max="100" step="1" value="0" oninput="onSliderChange(${i})" onchange="onSliderChange(${i})">
+                    <span id="val_${i}" class="val-num">0</span>
+                    <span id="pct_${i}" class="val-pct">0%</span>
+                `;
+                container.appendChild(div);
+            }
+        }
+
+        async function connectBLE() {
+            try {
+                document.getElementById('status').innerText = "状态: 正在搜索蓝牙设备...";
+                // 请求连接设备（过滤名称为 "ESP32_Hand" 的设备）
+                bleDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: 'ESP32_Hand' }],
+                    optionalServices: [SERVICE_UUID]
+                });
+
+                document.getElementById('status').innerText = "状态: 正在连接 GATT 服务器...";
+                const server = await bleDevice.gatt.connect();
+                
+                const service = await server.getPrimaryService(SERVICE_UUID);
+                bleCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
+                bleNotifyCharacteristic = await service.getCharacteristic(NOTIFY_CHARACTERISTIC_UUID);
+                await bleNotifyCharacteristic.startNotifications();
+                bleNotifyCharacteristic.addEventListener('characteristicvaluechanged', onPoseNotify);
+
+                document.getElementById('status').innerText = "状态: ✅ 已成功连接灵巧手！";
+                document.getElementById('connectBtn').style.display = 'none';
+                
+                // 显示控制按钮
+                document.querySelectorAll('.cmdBtn').forEach(btn => btn.style.display = 'inline-block');
+                document.querySelectorAll('.debugBtn').forEach(btn => btn.style.display = 'inline-block');
+                document.querySelectorAll('.modeBtn').forEach(btn => btn.style.display = 'inline-block');
+                updateModeUI(activeMode);
+
+                initSliders();
+                requestCustomPoseList();
+
+                // 监听断开连接
+                bleDevice.addEventListener('gattserverdisconnected', () => {
+                    document.getElementById('status').innerText = "状态: ❌ 连接已断开";
+                    document.getElementById('connectBtn').style.display = 'inline-block';
+                    document.querySelectorAll('.cmdBtn').forEach(btn => btn.style.display = 'none');
+                    document.querySelectorAll('.debugBtn').forEach(btn => btn.style.display = 'none');
+                    document.getElementById('debugPanel').style.display = 'none';
+                    document.getElementById('posePanel').style.display = 'none';
+                    closeSavePoseModal();
+                    isDebugMode = false;
+                    activeMode = null;
+                    customPoses = [];
+                    bleCharacteristic = null;
+                    bleNotifyCharacteristic = null;
+                    renderCustomPoseButtons();
+                    updateModeUI(null);
+                });
+
+            } catch (error) {
+                console.error(error);
+                document.getElementById('status').innerText = "状态: 连接失败或被取消";
+            }
+        }
+
+        // 发送常规控制指令 [0x01, cmdId]
+        async function sendActionCommand(cmdId) {
+            if (!bleCharacteristic) return;
+            try {
+                let data = new Uint8Array([0x01, cmdId]);
+                await bleCharacteristic.writeValue(data);
+                console.log("已发送 Action 指令: " + cmdId);
+            } catch (error) {
+                console.error("发送 Action 失败", error);
+            }
+        }
+
+        // 切换/取消模式（再次点击同一按钮即取消）
+        function updateDebugEntryVisibility() {
+            const enterDebugBtn = document.getElementById('enterDebugBtn');
+            const canEnterDebug = activeMode === null && !isDebugMode;
+            enterDebugBtn.style.display = canEnterDebug ? 'inline-block' : 'none';
+        }
+
+        function updateModeUI(mode) {
+            const graspControls = document.getElementById('graspControls');
+            const posePanel = document.getElementById('posePanel');
+            const indexRehomeBtn = document.getElementById('indexRehomeBtn');
+            const modeHint = document.getElementById('modeHint');
+
+            document.getElementById('modePower').classList.toggle('active', mode === 0);
+            document.getElementById('modePinch').classList.toggle('active', mode === 1);
+            document.getElementById('modePose').classList.toggle('active', mode === 2);
+            updateDebugEntryVisibility();
+
+            if (mode === null) {
+                modeHint.innerText = '当前模式: 未选中（手掌完全张开）';
+                graspControls.style.display = 'none';
+                posePanel.style.display = 'none';
+                document.querySelectorAll('.poseBtn').forEach(btn => btn.style.display = 'none');
+                document.querySelectorAll('.customPoseBtn').forEach(btn => btn.style.display = 'none');
+                return;
+            }
+
+            modeHint.innerText = '当前模式: ' + modeNames[mode];
+
+            if (mode === 2) {
+                graspControls.style.display = 'none';
+                posePanel.style.display = 'block';
+                document.querySelectorAll('.poseBtn').forEach(btn => btn.style.display = 'inline-block');
+                renderCustomPoseButtons();
+            } else {
+                graspControls.style.display = 'block';
+                posePanel.style.display = 'none';
+                document.querySelectorAll('.poseBtn').forEach(btn => btn.style.display = 'none');
+                document.querySelectorAll('.customPoseBtn').forEach(btn => btn.style.display = 'none');
+                indexRehomeBtn.style.display = (mode === 1) ? 'inline-block' : 'none';
+            }
+        }
+
+        function toggleMode(mode) {
+            if (activeMode === mode) {
+                sendActionCommand(deselectCmdId);
+                activeMode = null;
+            } else {
+                sendActionCommand(modeCmdIds[mode]);
+                activeMode = mode;
+            }
+            updateModeUI(activeMode);
+        }
+
+        // 发送调试滑块数据 [0x02, id, offset_low, offset_high] (int16 有符号)
+        async function sendSliderData(id, val) {
+            if (!bleCharacteristic || !isDebugMode) return;
+            try {
+                let offset = clampSliderValue(id, parseInt(val, 10));
+                let low = offset & 0xFF;
+                let high = (offset >> 8) & 0xFF;
+                let data = new Uint8Array([0x02, id, low, high]);
+                await bleCharacteristic.writeValue(data);
+            } catch (error) {
+                console.error("发送 Slider 数据失败", error);
+            }
+        }
+
+        // 节流定时器，避免滑块滑动时发送频率过高导致蓝牙拥塞
+        let sliderTimeouts = {};
+        function onSliderChange(id) {
+            const slider = document.getElementById(`slider_${id}`);
+            const visual = parseInt(slider.value, 10);
+            const val = visualToPhysical(id, visual);
+            document.getElementById(`val_${id}`).innerText = val;
+            document.getElementById(`pct_${id}`).innerText = `${visual}%`;
+            
+            if (sliderTimeouts[id]) {
+                clearTimeout(sliderTimeouts[id]);
+            }
+            sliderTimeouts[id] = setTimeout(() => {
+                sendSliderData(id, val);
+            }, 30); // 30ms 节流
+        }
+
+        function enterDebugMode() {
+            if (activeMode !== null) {
+                alert('请先取消当前模式，再进入位姿调试');
+                return;
+            }
+            // 重置滑块：最左侧 = 张开准备姿态 (offset 0)
+            for (let i = 0; i < 7; i++) {
+                document.getElementById(`slider_${i}`).value = 0;
+                document.getElementById(`val_${i}`).innerText = 0;
+                document.getElementById(`pct_${i}`).innerText = '0%';
+            }
+            sendActionCommand(10); // 进入调试模式
+            isDebugMode = true;
+            document.getElementById('debugPanel').style.display = 'block';
+            updateDebugEntryVisibility();
+        }
+
+        function exitDebugMode() {
+            sendActionCommand(11); // 退出调试模式
+            isDebugMode = false;
+            document.getElementById('debugPanel').style.display = 'none';
+            closeSavePoseModal();
+            updateDebugEntryVisibility();
+        }
+
+        function encodeUtf8(str) {
+            return new TextEncoder().encode(str);
+        }
+
+        function decodeUtf8(bytes) {
+            return new TextDecoder().decode(bytes);
+        }
+
+        function parsePoseEntry(data, offset) {
+            const index = data[offset + 1];
+            const nameLen = data[offset + 2];
+            const nameBytes = data.slice(offset + 3, offset + 3 + nameLen);
+            const name = decodeUtf8(nameBytes);
+            const offsets = [];
+            let pos = offset + 3 + nameLen;
+            for (let i = 0; i < 7; i++) {
+                const lo = data[pos++];
+                const hi = data[pos++];
+                let v = lo | (hi << 8);
+                if (v & 0x8000) v = v - 0x10000;
+                offsets.push(v);
+            }
+            return { index, name, offsets, nextPos: pos };
+        }
+
+        function onPoseNotify(event) {
+            const data = new Uint8Array(event.target.value.buffer);
+            if (data.length === 0) return;
+
+            const opcode = data[0];
+            if (opcode === POSE_NOTIFY_HDR_LIST) {
+                customPoses = [];
+                poseListLoading = true;
+                return;
+            }
+            if (opcode === POSE_NOTIFY_ENTRY || opcode === POSE_NOTIFY_SAVED) {
+                const entry = parsePoseEntry(data, 0);
+                const existing = customPoses.findIndex(p => p.index === entry.index);
+                if (existing >= 0) {
+                    customPoses[existing] = entry;
+                } else {
+                    customPoses.push(entry);
+                }
+                customPoses.sort((a, b) => a.index - b.index);
+                if (opcode === POSE_NOTIFY_SAVED) {
+                    closeSavePoseModal();
+                    document.getElementById('status').innerText = `状态: ✅ 已保存姿态「${entry.name}」`;
+                }
+                renderCustomPoseButtons();
+                return;
+            }
+            if (opcode === POSE_NOTIFY_LIST_END) {
+                poseListLoading = false;
+                renderCustomPoseButtons();
+                return;
+            }
+            if (opcode === POSE_NOTIFY_SAVE_FAIL) {
+                const reason = data.length > 1 ? data[1] : 0;
+                const msg = reason === 2 ? '请先进入位姿调试模式' :
+                            reason === 3 ? '保存失败：Flash 已满或写入错误' :
+                            '保存失败：名称无效';
+                alert(msg);
+            }
+        }
+
+        async function requestCustomPoseList() {
+            if (!bleCharacteristic) return;
+            try {
+                await bleCharacteristic.writeValue(new Uint8Array([0x04]));
+            } catch (error) {
+                console.error('请求姿态列表失败', error);
+            }
+        }
+
+        function renderCustomPoseButtons() {
+            const container = document.getElementById('customPoseButtons');
+            container.innerHTML = '';
+            customPoses.forEach(pose => {
+                const btn = document.createElement('button');
+                btn.className = 'customPoseBtn';
+                btn.innerText = `⭐ ${pose.name}`;
+                btn.onclick = () => sendCustomPoseTrigger(pose.index);
+                btn.style.display = (activeMode === 2) ? 'inline-block' : 'none';
+                container.appendChild(btn);
+            });
+            if (customPoses.length === 0 && !poseListLoading) {
+                const hint = document.createElement('p');
+                hint.style.fontSize = '13px';
+                hint.style.color = '#888';
+                hint.innerText = '暂无自定义姿态（可在位姿调试中保存）';
+                container.appendChild(hint);
+            }
+        }
+
+        async function sendCustomPoseTrigger(index) {
+            if (!bleCharacteristic) return;
+            try {
+                await bleCharacteristic.writeValue(new Uint8Array([0x05, index]));
+                console.log('触发自定义姿态 index=' + index);
+            } catch (error) {
+                console.error('触发自定义姿态失败', error);
+            }
+        }
+
+        function openSavePoseModal() {
+            if (!isDebugMode) {
+                alert('请先进入位姿调试模式');
+                return;
+            }
+            document.getElementById('poseNameInput').value = '';
+            onPoseNameInput();
+            document.getElementById('savePoseModal').classList.add('show');
+        }
+
+        function closeSavePoseModal() {
+            document.getElementById('savePoseModal').classList.remove('show');
+        }
+
+        function onPoseNameInput() {
+            const name = document.getElementById('poseNameInput').value.trim();
+            const btn = document.getElementById('confirmSavePoseBtn');
+            if (name.length > 0) {
+                btn.classList.add('enabled');
+            } else {
+                btn.classList.remove('enabled');
+            }
+        }
+
+        async function confirmSavePose() {
+            const btn = document.getElementById('confirmSavePoseBtn');
+            if (!btn.classList.contains('enabled') || !bleCharacteristic) return;
+
+            const name = document.getElementById('poseNameInput').value.trim();
+            if (!name) return;
+
+            const nameBytes = encodeUtf8(name);
+            if (nameBytes.length === 0 || nameBytes.length > 20) {
+                alert('名称过长，请控制在 20 字节以内');
+                return;
+            }
+
+            try {
+                const packet = new Uint8Array(2 + nameBytes.length);
+                packet[0] = 0x03;
+                packet[1] = nameBytes.length;
+                packet.set(nameBytes, 2);
+                await bleCharacteristic.writeValue(packet);
+                document.getElementById('status').innerText = '状态: 正在保存姿态...';
+            } catch (error) {
+                console.error('保存姿态失败', error);
+                alert('保存失败，请重试');
+            }
+        }
+
+    </script>
+</body>
+</html>
