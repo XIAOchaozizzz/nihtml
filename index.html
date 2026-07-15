@@ -42,9 +42,11 @@
         .slider-container .val-num { width: 50px; text-align: left; }
         .slider-container .val-pct { width: 45px; text-align: left; color: #666; font-size: 14px; }
 
-        #customPoseSection { margin-top: 12px; }
-        #customPoseSection h4 { margin: 8px 0; color: #7d3c98; font-size: 15px; }
-        .customPoseBtn { background-color: #16a085; color: white; border: none; display: none; }
+        #poseListSection { margin-top: 12px; }
+        #poseListSection h4 { margin: 8px 0; color: #7d3c98; font-size: 15px; }
+        .poseListBtn { background-color: #9b59b6; color: white; border: none; display: none; }
+        .poseListBtn:hover { filter: brightness(1.05); }
+        #poseHint { font-size: 13px; color: #888; margin: 8px 0; }
 
         #savePoseModal {
             display: none;
@@ -122,15 +124,11 @@
     <!-- Pose 展示面板 -->
     <div id="posePanel">
         <h3>Pose 展示</h3>
-        <p style="font-size: 14px; color: #666;">点击按钮摆出预设手势，完成后保持姿态</p>
-        <button class="poseBtn" onclick="sendActionCommand(30)">☝️ 伸食指</button>
-        <button class="poseBtn" onclick="sendActionCommand(31)">👌 OK 手势</button>
-        <br>
-        <button class="poseBtn" onclick="sendActionCommand(32)">✌️ 耶手势</button>
-        <button class="poseBtn" onclick="sendActionCommand(33)">🤟 ILY 手势</button>
-        <div id="customPoseSection">
-            <h4>已保存的自定义姿态</h4>
-            <div id="customPoseButtons"></div>
+        <p style="font-size: 14px; color: #666;">左键执行姿态，右键删除（从 Flash 永久移除）</p>
+        <div id="poseListSection">
+            <h4>姿态列表（Flash 存储）</h4>
+            <div id="poseButtons"></div>
+            <p id="poseHint"></p>
         </div>
         <br><br>
         <button class="cmdBtn" onclick="sendActionCommand(2)" style="display: inline-block; background-color: #34495e;">🔄 回到零点</button>
@@ -172,7 +170,7 @@
         let bleDevice = null;
         let isDebugMode = false;
         let activeMode = null;
-        let customPoses = [];
+        let savedPoses = [];
         let poseListLoading = false;
 
         const POSE_NOTIFY_HDR_LIST = 0x90;
@@ -180,6 +178,7 @@
         const POSE_NOTIFY_LIST_END = 0x92;
         const POSE_NOTIFY_SAVED = 0x93;
         const POSE_NOTIFY_SAVE_FAIL = 0x94;
+        const POSE_NOTIFY_DELETE_FAIL = 0x96;
 
         const modeNames = ['圆柱抓握', '二指抓握', 'Pose展示'];
         const modeCmdIds = [20, 21, 22];
@@ -254,7 +253,7 @@
                 updateModeUI(activeMode);
 
                 initSliders();
-                requestCustomPoseList();
+                requestPoseList();
 
                 // 监听断开连接
                 bleDevice.addEventListener('gattserverdisconnected', () => {
@@ -267,10 +266,10 @@
                     closeSavePoseModal();
                     isDebugMode = false;
                     activeMode = null;
-                    customPoses = [];
+                    savedPoses = [];
                     bleCharacteristic = null;
                     bleNotifyCharacteristic = null;
-                    renderCustomPoseButtons();
+                    renderPoseButtons();
                     updateModeUI(null);
                 });
 
@@ -314,8 +313,7 @@
                 modeHint.innerText = '当前模式: 未选中（手掌完全张开）';
                 graspControls.style.display = 'none';
                 posePanel.style.display = 'none';
-                document.querySelectorAll('.poseBtn').forEach(btn => btn.style.display = 'none');
-                document.querySelectorAll('.customPoseBtn').forEach(btn => btn.style.display = 'none');
+                document.querySelectorAll('.poseListBtn').forEach(btn => btn.style.display = 'none');
                 return;
             }
 
@@ -324,13 +322,11 @@
             if (mode === 2) {
                 graspControls.style.display = 'none';
                 posePanel.style.display = 'block';
-                document.querySelectorAll('.poseBtn').forEach(btn => btn.style.display = 'inline-block');
-                renderCustomPoseButtons();
+                renderPoseButtons();
             } else {
                 graspControls.style.display = 'block';
                 posePanel.style.display = 'none';
-                document.querySelectorAll('.poseBtn').forEach(btn => btn.style.display = 'none');
-                document.querySelectorAll('.customPoseBtn').forEach(btn => btn.style.display = 'none');
+                document.querySelectorAll('.poseListBtn').forEach(btn => btn.style.display = 'none');
                 indexRehomeBtn.style.display = (mode === 1) ? 'inline-block' : 'none';
             }
         }
@@ -433,29 +429,29 @@
 
             const opcode = data[0];
             if (opcode === POSE_NOTIFY_HDR_LIST) {
-                customPoses = [];
+                savedPoses = [];
                 poseListLoading = true;
                 return;
             }
             if (opcode === POSE_NOTIFY_ENTRY || opcode === POSE_NOTIFY_SAVED) {
                 const entry = parsePoseEntry(data, 0);
-                const existing = customPoses.findIndex(p => p.index === entry.index);
+                const existing = savedPoses.findIndex(p => p.index === entry.index);
                 if (existing >= 0) {
-                    customPoses[existing] = entry;
+                    savedPoses[existing] = entry;
                 } else {
-                    customPoses.push(entry);
+                    savedPoses.push(entry);
                 }
-                customPoses.sort((a, b) => a.index - b.index);
+                savedPoses.sort((a, b) => a.index - b.index);
                 if (opcode === POSE_NOTIFY_SAVED) {
                     closeSavePoseModal();
                     document.getElementById('status').innerText = `状态: ✅ 已保存姿态「${entry.name}」`;
                 }
-                renderCustomPoseButtons();
+                renderPoseButtons();
                 return;
             }
             if (opcode === POSE_NOTIFY_LIST_END) {
                 poseListLoading = false;
-                renderCustomPoseButtons();
+                renderPoseButtons();
                 return;
             }
             if (opcode === POSE_NOTIFY_SAVE_FAIL) {
@@ -464,10 +460,14 @@
                             reason === 3 ? '保存失败：Flash 已满或写入错误' :
                             '保存失败：名称无效';
                 alert(msg);
+                return;
+            }
+            if (opcode === POSE_NOTIFY_DELETE_FAIL) {
+                alert('删除失败：索引无效或 Flash 写入错误');
             }
         }
 
-        async function requestCustomPoseList() {
+        async function requestPoseList() {
             if (!bleCharacteristic) return;
             try {
                 await bleCharacteristic.writeValue(new Uint8Array([0x04]));
@@ -476,33 +476,55 @@
             }
         }
 
-        function renderCustomPoseButtons() {
-            const container = document.getElementById('customPoseButtons');
+        function renderPoseButtons() {
+            const container = document.getElementById('poseButtons');
+            const hint = document.getElementById('poseHint');
             container.innerHTML = '';
-            customPoses.forEach(pose => {
+
+            savedPoses.forEach(pose => {
                 const btn = document.createElement('button');
-                btn.className = 'customPoseBtn';
-                btn.innerText = `⭐ ${pose.name}`;
-                btn.onclick = () => sendCustomPoseTrigger(pose.index);
+                btn.className = 'poseListBtn';
+                btn.innerText = pose.name;
+                btn.title = '左键：执行 | 右键：删除';
+                btn.onclick = () => sendPoseTrigger(pose.index);
+                btn.oncontextmenu = (e) => {
+                    e.preventDefault();
+                    deletePose(pose.index, pose.name);
+                    return false;
+                };
                 btn.style.display = (activeMode === 2) ? 'inline-block' : 'none';
                 container.appendChild(btn);
             });
-            if (customPoses.length === 0 && !poseListLoading) {
-                const hint = document.createElement('p');
-                hint.style.fontSize = '13px';
-                hint.style.color = '#888';
-                hint.innerText = '暂无自定义姿态（可在位姿调试中保存）';
-                container.appendChild(hint);
+
+            if (savedPoses.length === 0 && !poseListLoading) {
+                hint.innerText = '暂无姿态（可在位姿调试中保存，或重新烧录以恢复默认姿态）';
+            } else if (poseListLoading) {
+                hint.innerText = '正在加载姿态列表...';
+            } else {
+                hint.innerText = `共 ${savedPoses.length} 个姿态`;
             }
         }
 
-        async function sendCustomPoseTrigger(index) {
+        async function sendPoseTrigger(index) {
             if (!bleCharacteristic) return;
             try {
                 await bleCharacteristic.writeValue(new Uint8Array([0x05, index]));
-                console.log('触发自定义姿态 index=' + index);
             } catch (error) {
-                console.error('触发自定义姿态失败', error);
+                console.error('触发姿态失败', error);
+            }
+        }
+
+        async function deletePose(index, name) {
+            if (!bleCharacteristic) return;
+            if (!confirm(`确定删除姿态「${name}」？\n此操作会从 Flash 永久移除。`)) {
+                return;
+            }
+            try {
+                await bleCharacteristic.writeValue(new Uint8Array([0x06, index]));
+                document.getElementById('status').innerText = `状态: 正在删除「${name}」...`;
+            } catch (error) {
+                console.error('删除姿态失败', error);
+                alert('删除失败，请重试');
             }
         }
 
