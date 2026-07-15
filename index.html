@@ -157,8 +157,10 @@
     <div id="savePoseModal">
         <div class="modal-box">
             <h3>为当前姿态命名</h3>
-            <p style="font-size: 14px; color: #666; margin: 0;">将保存 7 个关节的 offset 偏置到 Flash，掉电不丢失。</p>
-            <input type="text" id="poseNameInput" maxlength="20" placeholder="例如：点赞手势" oninput="onPoseNameInput()">
+            <p style="font-size: 14px; color: #666; margin: 0;">名称必须为中文，系统将自动生成语音命令词拼音并保存到 Flash。</p>
+            <input type="text" id="poseNameInput" maxlength="12" placeholder="例如：点赞手势" oninput="onPoseNameInput()">
+            <p id="pinyinPreview" style="font-size: 14px; color: #555; margin: 0 0 8px;">语音命令词：-</p>
+            <p id="poseNameError" style="font-size: 13px; color: #e74c3c; margin: 0 0 12px; min-height: 18px;"></p>
             <div class="modal-actions">
                 <button style="background-color: #95a5a6; color: white; border: none;" onclick="closeSavePoseModal()">取消</button>
                 <button id="confirmSavePoseBtn" onclick="confirmSavePose()">确定保存</button>
@@ -166,6 +168,7 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/pinyin-pro@3.26.0/dist/index.js"></script>
     <script>
         // 定义我们将在 ESP32 代码中设置的专属 UUID
         const SERVICE_UUID = '12345678-1234-5678-1234-56789abcdef0';
@@ -185,6 +188,13 @@
         const POSE_NOTIFY_SAVED = 0x93;
         const POSE_NOTIFY_SAVE_FAIL = 0x94;
         const POSE_NOTIFY_DELETE_FAIL = 0x96;
+
+        const RESERVED_PINYINS = [
+            'zhua wo', 'wo quan', 'song kai', 'chong xin gui ling',
+            'yuan zhu mo shi', 'er zhi mo shi', 'biao yan mo shi',
+            'yuan zhu zhua wo', 'er zhi zhua wo',
+            'shen shi zhi', 'ou ke shou shi', 'ye shou shi', 'wo ai ni'
+        ];
 
         const modeNames = ['圆柱抓握', '二指抓握', 'Pose展示'];
         const modeCmdIds = [20, 21, 22];
@@ -407,6 +417,45 @@
             updateDebugEntryVisibility();
         }
 
+        function normalizePinyin(pinyin) {
+            return pinyin.toLowerCase().trim().replace(/\s+/g, ' ');
+        }
+
+        function isChineseOnly(name) {
+            return /^[\u4e00-\u9fff]+$/.test(name);
+        }
+
+        function nameToPinyin(name) {
+            if (typeof pinyinPro === 'undefined') {
+                return '';
+            }
+            return normalizePinyin(pinyinPro.pinyin(name, { toneType: 'none', type: 'string' }));
+        }
+
+        function isPinyinTaken(pinyin) {
+            const norm = normalizePinyin(pinyin);
+            if (!norm) return true;
+            if (RESERVED_PINYINS.includes(norm)) return true;
+            return savedPoses.some(p => p.pinyin && normalizePinyin(p.pinyin) === norm);
+        }
+
+        function validatePoseName(name) {
+            if (!name) {
+                return { ok: false, msg: '请输入中文名称', pinyin: '' };
+            }
+            if (!isChineseOnly(name)) {
+                return { ok: false, msg: '名称只能包含中文汉字', pinyin: '' };
+            }
+            const pinyin = nameToPinyin(name);
+            if (!pinyin) {
+                return { ok: false, msg: '无法生成拼音，请检查输入', pinyin: '' };
+            }
+            if (isPinyinTaken(pinyin)) {
+                return { ok: false, msg: `语音命令词「${pinyin}」与现有命令冲突，请换个名称`, pinyin };
+            }
+            return { ok: true, msg: '', pinyin };
+        }
+
         function encodeUtf8(str) {
             return new TextEncoder().encode(str);
         }
@@ -420,8 +469,16 @@
             const nameLen = data[offset + 2];
             const nameBytes = data.slice(offset + 3, offset + 3 + nameLen);
             const name = decodeUtf8(nameBytes);
-            const offsets = [];
             let pos = offset + 3 + nameLen;
+            let pinyin = '';
+            if (pos < data.length) {
+                const pinyinLen = data[pos++];
+                if (pinyinLen > 0) {
+                    pinyin = decodeUtf8(data.slice(pos, pos + pinyinLen));
+                    pos += pinyinLen;
+                }
+            }
+            const offsets = [];
             for (let i = 0; i < 7; i++) {
                 const lo = data[pos++];
                 const hi = data[pos++];
@@ -429,7 +486,7 @@
                 if (v & 0x8000) v = v - 0x10000;
                 offsets.push(v);
             }
-            return { index, name, offsets, nextPos: pos };
+            return { index, name, pinyin, offsets, nextPos: pos };
         }
 
         function onPoseNotify(event) {
@@ -466,6 +523,9 @@
             if (opcode === POSE_NOTIFY_SAVE_FAIL) {
                 const reason = data.length > 1 ? data[1] : 0;
                 const msg = reason === 2 ? '请先进入位姿调试模式' :
+                            reason === 4 ? '语音拼音与现有命令词冲突' :
+                            reason === 5 ? '名称必须为中文' :
+                            reason === 6 ? '拼音格式无效' :
                             reason === 3 ? '保存失败：Flash 已满或写入错误' :
                             '保存失败：名称无效';
                 alert(msg);
@@ -494,7 +554,7 @@
                 const btn = document.createElement('button');
                 btn.className = 'customPoseBtn';
                 btn.innerText = `⭐ ${pose.name}`;
-                btn.title = '左键：执行 | 右键：删除';
+                btn.title = pose.pinyin ? `语音: ${pose.pinyin} | 左键执行，右键删除` : '左键：执行 | 右键：删除';
                 btn.onclick = () => sendCustomPoseTrigger(pose.index);
                 btn.oncontextmenu = (e) => {
                     e.preventDefault();
@@ -543,6 +603,8 @@
                 return;
             }
             document.getElementById('poseNameInput').value = '';
+            document.getElementById('pinyinPreview').innerText = '语音命令词：-';
+            document.getElementById('poseNameError').innerText = '';
             onPoseNameInput();
             document.getElementById('savePoseModal').classList.add('show');
         }
@@ -554,7 +616,20 @@
         function onPoseNameInput() {
             const name = document.getElementById('poseNameInput').value.trim();
             const btn = document.getElementById('confirmSavePoseBtn');
-            if (name.length > 0) {
+            const preview = document.getElementById('pinyinPreview');
+            const errBox = document.getElementById('poseNameError');
+            const result = validatePoseName(name);
+
+            if (!name) {
+                preview.innerText = '语音命令词：-';
+                errBox.innerText = '';
+                btn.classList.remove('enabled');
+                return;
+            }
+
+            preview.innerText = result.pinyin ? `语音命令词：${result.pinyin}` : '语音命令词：-';
+            errBox.innerText = result.ok ? '' : result.msg;
+            if (result.ok) {
                 btn.classList.add('enabled');
             } else {
                 btn.classList.remove('enabled');
@@ -566,19 +641,30 @@
             if (!btn.classList.contains('enabled') || !bleCharacteristic) return;
 
             const name = document.getElementById('poseNameInput').value.trim();
-            if (!name) return;
+            const result = validatePoseName(name);
+            if (!result.ok) {
+                document.getElementById('poseNameError').innerText = result.msg;
+                return;
+            }
 
             const nameBytes = encodeUtf8(name);
+            const pinyinBytes = encodeUtf8(result.pinyin);
             if (nameBytes.length === 0 || nameBytes.length > 20) {
                 alert('名称过长，请控制在 20 字节以内');
                 return;
             }
+            if (pinyinBytes.length === 0 || pinyinBytes.length > 40) {
+                alert('生成的拼音过长，请缩短名称');
+                return;
+            }
 
             try {
-                const packet = new Uint8Array(2 + nameBytes.length);
+                const packet = new Uint8Array(3 + nameBytes.length + pinyinBytes.length);
                 packet[0] = 0x03;
                 packet[1] = nameBytes.length;
                 packet.set(nameBytes, 2);
+                packet[2 + nameBytes.length] = pinyinBytes.length;
+                packet.set(pinyinBytes, 3 + nameBytes.length);
                 await bleCharacteristic.writeValue(packet);
                 document.getElementById('status').innerText = '状态: 正在保存姿态...';
             } catch (error) {
