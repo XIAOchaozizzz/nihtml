@@ -11,6 +11,7 @@
         .cmdBtn { background-color: #008CBA; color: white; border: none; display: none; }
         .debugBtn { background-color: #f39c12; color: white; border: none; display: none; }
         .poseBtn { background-color: #9b59b6; color: white; border: none; display: none; }
+        .customPoseBtn { background-color: #16a085; color: white; border: none; display: none; }
         .modeBtn { background-color: #ecf0f1; color: #333; border: 2px solid #bdc3c7; display: none; }
         .modeBtn.active { background-color: #2980b9; color: white; border-color: #2980b9; }
         #modeHint { font-size: 14px; color: #888; margin-bottom: 10px; }
@@ -124,10 +125,15 @@
     <!-- Pose 展示面板 -->
     <div id="posePanel">
         <h3>Pose 展示</h3>
-        <p style="font-size: 14px; color: #666;">左键执行姿态，右键删除（从 Flash 永久移除）</p>
+        <p style="font-size: 14px; color: #666;">预设手势固定保留；自定义手势右键可删除</p>
+        <button class="poseBtn" onclick="sendActionCommand(30)">☝️ 伸食指</button>
+        <button class="poseBtn" onclick="sendActionCommand(31)">👌 OK 手势</button>
+        <br>
+        <button class="poseBtn" onclick="sendActionCommand(32)">✌️ 耶手势</button>
+        <button class="poseBtn" onclick="sendActionCommand(33)">🤟 ILY 手势</button>
         <div id="poseListSection">
-            <h4>姿态列表（Flash 存储）</h4>
-            <div id="poseButtons"></div>
+            <h4>已保存的自定义姿态</h4>
+            <div id="customPoseButtons"></div>
             <p id="poseHint"></p>
         </div>
         <br><br>
@@ -269,7 +275,7 @@
                     savedPoses = [];
                     bleCharacteristic = null;
                     bleNotifyCharacteristic = null;
-                    renderPoseButtons();
+                    renderCustomPoseButtons();
                     updateModeUI(null);
                 });
 
@@ -313,7 +319,8 @@
                 modeHint.innerText = '当前模式: 未选中（手掌完全张开）';
                 graspControls.style.display = 'none';
                 posePanel.style.display = 'none';
-                document.querySelectorAll('.poseListBtn').forEach(btn => btn.style.display = 'none');
+                document.querySelectorAll('.poseBtn').forEach(btn => btn.style.display = 'none');
+                document.querySelectorAll('.customPoseBtn').forEach(btn => btn.style.display = 'none');
                 return;
             }
 
@@ -322,11 +329,13 @@
             if (mode === 2) {
                 graspControls.style.display = 'none';
                 posePanel.style.display = 'block';
-                renderPoseButtons();
+                document.querySelectorAll('.poseBtn').forEach(btn => btn.style.display = 'inline-block');
+                renderCustomPoseButtons();
             } else {
                 graspControls.style.display = 'block';
                 posePanel.style.display = 'none';
-                document.querySelectorAll('.poseListBtn').forEach(btn => btn.style.display = 'none');
+                document.querySelectorAll('.poseBtn').forEach(btn => btn.style.display = 'none');
+                document.querySelectorAll('.customPoseBtn').forEach(btn => btn.style.display = 'none');
                 indexRehomeBtn.style.display = (mode === 1) ? 'inline-block' : 'none';
             }
         }
@@ -446,12 +455,12 @@
                     closeSavePoseModal();
                     document.getElementById('status').innerText = `状态: ✅ 已保存姿态「${entry.name}」`;
                 }
-                renderPoseButtons();
+                renderCustomPoseButtons();
                 return;
             }
             if (opcode === POSE_NOTIFY_LIST_END) {
                 poseListLoading = false;
-                renderPoseButtons();
+                renderCustomPoseButtons();
                 return;
             }
             if (opcode === POSE_NOTIFY_SAVE_FAIL) {
@@ -476,17 +485,17 @@
             }
         }
 
-        function renderPoseButtons() {
-            const container = document.getElementById('poseButtons');
+        function renderCustomPoseButtons() {
+            const container = document.getElementById('customPoseButtons');
             const hint = document.getElementById('poseHint');
             container.innerHTML = '';
 
             savedPoses.forEach(pose => {
                 const btn = document.createElement('button');
-                btn.className = 'poseListBtn';
-                btn.innerText = pose.name;
+                btn.className = 'customPoseBtn';
+                btn.innerText = `⭐ ${pose.name}`;
                 btn.title = '左键：执行 | 右键：删除';
-                btn.onclick = () => sendPoseTrigger(pose.index);
+                btn.onclick = () => sendCustomPoseTrigger(pose.index);
                 btn.oncontextmenu = (e) => {
                     e.preventDefault();
                     deletePose(pose.index, pose.name);
@@ -497,20 +506,20 @@
             });
 
             if (savedPoses.length === 0 && !poseListLoading) {
-                hint.innerText = '暂无姿态（可在位姿调试中保存，或重新烧录以恢复默认姿态）';
+                hint.innerText = '暂无自定义姿态（可在位姿调试中保存）';
             } else if (poseListLoading) {
-                hint.innerText = '正在加载姿态列表...';
+                hint.innerText = '正在加载自定义姿态...';
             } else {
-                hint.innerText = `共 ${savedPoses.length} 个姿态`;
+                hint.innerText = `共 ${savedPoses.length} 个自定义姿态（右键可删除）`;
             }
         }
 
-        async function sendPoseTrigger(index) {
+        async function sendCustomPoseTrigger(index) {
             if (!bleCharacteristic) return;
             try {
                 await bleCharacteristic.writeValue(new Uint8Array([0x05, index]));
             } catch (error) {
-                console.error('触发姿态失败', error);
+                console.error('触发自定义姿态失败', error);
             }
         }
 
