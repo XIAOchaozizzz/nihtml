@@ -49,7 +49,7 @@
         .poseListBtn:hover { filter: brightness(1.05); }
         #poseHint { font-size: 13px; color: #888; margin: 8px 0; }
 
-        #savePoseModal {
+        .overlay-modal {
             display: none;
             position: fixed;
             inset: 0;
@@ -58,7 +58,7 @@
             align-items: center;
             justify-content: center;
         }
-        #savePoseModal.show { display: flex; }
+        .overlay-modal.show { display: flex; }
         .modal-box {
             background: #fff;
             border-radius: 12px;
@@ -153,9 +153,19 @@
         <button style="background-color: #2ecc71; color: white; border: none;" onclick="openSavePoseModal()">💾 记录并保存当前姿态</button>
     </div>
 
+    <!-- 保存数量上限提示弹窗 -->
+    <div id="poseLimitModal" class="overlay-modal" onclick="closePoseLimitModal(event)">
+        <div class="modal-box" onclick="event.stopPropagation()">
+            <h3>无法继续保存</h3>
+            <p style="font-size: 15px; color: #555; margin: 0; text-align: center; line-height: 1.6;">
+                已到达保存上限，删除一些再继续吧
+            </p>
+        </div>
+    </div>
+
     <!-- 保存姿态命名弹窗 -->
-    <div id="savePoseModal">
-        <div class="modal-box">
+    <div id="savePoseModal" class="overlay-modal" onclick="closeSavePoseModal(event)">
+        <div class="modal-box" onclick="event.stopPropagation()">
             <h3>为当前姿态命名</h3>
             <p style="font-size: 14px; color: #666; margin: 0;">名称必须为中文，系统将自动生成语音命令词拼音并保存到 Flash。</p>
             <input type="text" id="poseNameInput" maxlength="12" placeholder="例如：点赞手势" oninput="onPoseNameInput()">
@@ -181,6 +191,7 @@
         let activeMode = null;
         let savedPoses = [];
         let poseListLoading = false;
+        const POSE_SAVE_LIMIT = 30;
 
         const POSE_NOTIFY_HDR_LIST = 0x90;
         const POSE_NOTIFY_ENTRY = 0x91;
@@ -570,7 +581,7 @@
             } else if (poseListLoading) {
                 hint.innerText = '正在加载自定义姿态...';
             } else {
-                hint.innerText = `共 ${savedPoses.length} 个自定义姿态（右键可删除）`;
+                hint.innerText = `共 ${savedPoses.length}/${POSE_SAVE_LIMIT} 个自定义姿态（右键可删除）`;
             }
         }
 
@@ -602,6 +613,10 @@
                 alert('请先进入位姿调试模式');
                 return;
             }
+            if (savedPoses.length >= POSE_SAVE_LIMIT) {
+                document.getElementById('poseLimitModal').classList.add('show');
+                return;
+            }
             document.getElementById('poseNameInput').value = '';
             document.getElementById('pinyinPreview').innerText = '语音命令词：-';
             document.getElementById('poseNameError').innerText = '';
@@ -609,8 +624,14 @@
             document.getElementById('savePoseModal').classList.add('show');
         }
 
-        function closeSavePoseModal() {
+        function closeSavePoseModal(event) {
+            if (event && event.target !== event.currentTarget) return;
             document.getElementById('savePoseModal').classList.remove('show');
+        }
+
+        function closePoseLimitModal(event) {
+            if (event && event.target !== event.currentTarget) return;
+            document.getElementById('poseLimitModal').classList.remove('show');
         }
 
         function onPoseNameInput() {
