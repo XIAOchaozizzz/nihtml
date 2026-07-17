@@ -1,1722 +1,783 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
-  <title>灵巧手 WebBLE 控制台</title>
-  <!-- 拼音库：用于自定义姿态名称的语音命令词生成与冲突检测 -->
-  <script src="https://cdn.jsdelivr.net/npm/pinyin-pro@3.26.0/dist/index.js"></script>
-  <style>
-    :root {
-      --bg-0: #020617; --bg-1: #0f172a; --bg-2: #1e293b;
-      --text-main: #e2e8f0; --text-muted: #94a3b8; --text-soft: #64748b;
-      --cyan: #06b6d4; --blue: #2563eb; --purple: #a855f7; --pink: #ec4899;
-      --amber: #f59e0b; --orange: #ea580c; --green: #22c55e; --red: #ef4444;
-      --border: rgba(148, 163, 184, 0.18); --glass: rgba(15, 23, 42, 0.56);
-      --glass-strong: rgba(15, 23, 42, 0.78); --shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
-      --radius-xl: 24px; --radius-lg: 18px; --radius-md: 14px;
-    }
-    * { box-sizing: border-box; }
-    html { min-height: 100%; scroll-behavior: smooth; }
-    body {
-      margin: 0; min-height: 100vh;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
-      color: var(--text-main); background: var(--bg-0); overflow-x: hidden;
-    }
-    button, input { font: inherit; }
-    button { border: none; cursor: pointer; }
-    .hidden { display: none !important; }
-    .app { position: relative; min-height: 100vh; padding: 32px 16px 48px; isolation: isolate; }
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>灵巧手 WebBLE 控制台</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin-top: 20px; }
+        button { font-size: 18px; padding: 10px 20px; margin: 5px; border-radius: 8px; cursor: pointer; }
+        #connectBtn { background-color: #4CAF50; color: white; border: none; font-size: 20px; padding: 15px 30px; }
+        .cmdBtn { background-color: #008CBA; color: white; border: none; display: none; }
+        .debugBtn { background-color: #f39c12; color: white; border: none; display: none; }
+        .poseBtn { background-color: #9b59b6; color: white; border: none; display: none; }
+        .customPoseBtn { background-color: #16a085; color: white; border: none; display: none; }
+        .modeBtn { background-color: #ecf0f1; color: #333; border: 2px solid #bdc3c7; display: none; }
+        .modeBtn.active { background-color: #2980b9; color: white; border-color: #2980b9; }
+        #modeHint { font-size: 14px; color: #888; margin-bottom: 10px; }
+        #status { margin: 15px; font-weight: bold; color: #555; }
+        
+        #debugPanel, #posePanel {
+            display: none;
+            margin-top: 20px;
+            padding: 15px;
+            border: 2px dashed #f39c12;
+            border-radius: 10px;
+            background-color: #fdf5e6;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        #posePanel {
+            border-color: #9b59b6;
+            background-color: #f5eef8;
+        }
+        .slider-container {
+            margin: 15px 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .slider-container label { font-weight: bold; width: 120px; text-align: right; margin-right: 15px; }
+        .slider-container input[type=range] { flex-grow: 1; margin-right: 15px; }
+        .slider-container .val-num { width: 50px; text-align: left; }
+        .slider-container .val-pct { width: 45px; text-align: left; color: #666; font-size: 14px; }
 
-    .tech-bg {
-      position: fixed; inset: 0; z-index: -3; overflow: hidden; pointer-events: none;
-      background:
-        radial-gradient(circle at 18% 18%, rgba(37, 99, 235, 0.28), transparent 28%),
-        radial-gradient(circle at 82% 28%, rgba(168, 85, 247, 0.24), transparent 30%),
-        radial-gradient(circle at 48% 82%, rgba(6, 182, 212, 0.16), transparent 34%),
-        linear-gradient(135deg, #020617 0%, #0f172a 48%, #020617 100%);
-    }
-    .tech-bg::before {
-      content: ""; position: absolute; inset: 0; opacity: 0.18;
-      background-image:
-        linear-gradient(rgba(59, 130, 246, 0.55) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(59, 130, 246, 0.55) 1px, transparent 1px);
-      background-size: 50px 50px;
-      mask-image: radial-gradient(circle at center, black, transparent 78%);
-    }
-    .tech-bg::after {
-      content: ""; position: absolute; inset: -20%;
-      background: conic-gradient(from 180deg at 50% 50%, transparent, rgba(6, 182, 212, 0.08), transparent, rgba(168, 85, 247, 0.08), transparent);
-      animation: bgRotate 26s linear infinite; opacity: 0.7;
-    }
-    .corner { position: fixed; width: 120px; height: 120px; z-index: -1; pointer-events: none; border-color: rgba(59, 130, 246, 0.22); }
-    .corner-tl { top: 0; left: 0; border-top: 2px solid; border-left: 2px solid; }
-    .corner-tr { top: 0; right: 0; border-top: 2px solid; border-right: 2px solid; }
-    .corner-bl { bottom: 0; left: 0; border-bottom: 2px solid; border-left: 2px solid; }
-    .corner-br { bottom: 0; right: 0; border-bottom: 2px solid; border-right: 2px solid; }
+        #poseListSection { margin-top: 12px; }
+        #poseListSection h4 { margin: 8px 0; color: #7d3c98; font-size: 15px; }
+        .poseListBtn { background-color: #9b59b6; color: white; border: none; display: none; }
+        .poseListBtn:hover { filter: brightness(1.05); }
+        #poseHint { font-size: 13px; color: #888; margin: 8px 0; }
 
-    @keyframes bgRotate { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-    @keyframes floatOrb { 0%,100% { transform: translate3d(0,0,0) scale(1); } 50% { transform: translate3d(0,-20px,0) scale(1.08); } }
-    .orb { position: fixed; width: 360px; height: 360px; border-radius: 999px; filter: blur(70px); opacity: 0.18; z-index: -2; pointer-events: none; animation: floatOrb 6s ease-in-out infinite; }
-    .orb-blue { top: 18%; left: 15%; background: #3b82f6; }
-    .orb-purple { right: 12%; bottom: 16%; background: #a855f7; animation-delay: 1.1s; }
-    .orb-cyan { left: 45%; top: 46%; width: 260px; height: 260px; background: #06b6d4; opacity: 0.1; animation-delay: 2.2s; }
-    .container { width: min(1120px, 100%); margin: 0 auto; }
-
-    .header { text-align: center; margin-bottom: 36px; }
-    .badge { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border: 1px solid rgba(34, 211, 238, 0.22); border-radius: 999px; background: rgba(6, 182, 212, 0.1); color: #22d3ee; font-size: 13px; font-weight: 700; letter-spacing: 0.12em; margin-bottom: 16px; }
-    .badge-icon { animation: softPulse 1.6s ease-in-out infinite; }
-    .title { margin: 0; font-size: clamp(36px, 7vw, 64px); line-height: 1.05; letter-spacing: -0.06em; font-weight: 900; background: linear-gradient(90deg, #22d3ee, #60a5fa, #c084fc); -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: 0 0 40px rgba(96, 165, 250, 0.18); }
-    .subtitle-row { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 16px; color: var(--text-soft); font-size: clamp(14px, 2vw, 18px); }
-    .subtitle-line { width: 72px; height: 1px; background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.55)); }
-    .subtitle-line.right { background: linear-gradient(90deg, rgba(148, 163, 184, 0.55), transparent); }
-
-    .glass-card { position: relative; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: var(--radius-xl); background: linear-gradient(180deg, rgba(255,255,255,0.055), transparent), var(--glass); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); box-shadow: var(--shadow); padding: 22px; overflow: hidden; }
-    .glass-card::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 0 0, rgba(255,255,255,0.1), transparent 34%), radial-gradient(circle at 100% 0, rgba(34,211,238,0.08), transparent 28%); pointer-events: none; }
-    .glass-card > * { position: relative; z-index: 1; }
-    .glow-card { position: relative; }
-    .glow-card::after { content: ""; position: absolute; inset: -2px; border-radius: inherit; background: linear-gradient(135deg, rgba(6,182,212,0.55), rgba(37,99,235,0.32)); filter: blur(12px); opacity: 0.25; z-index: -1; transition: opacity 0.35s ease; }
-    .glow-card:hover::after { opacity: 0.52; }
-    .section { margin-top: 24px; }
-    .section-title-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-bottom: 18px; margin-bottom: 18px; border-bottom: 1px solid rgba(148, 163, 184, 0.16); }
-    .section-title { margin: 0; font-size: 20px; font-weight: 850; color: #f8fafc; }
-    .section-desc { margin: 6px 0 0; color: var(--text-muted); font-size: 14px; }
-    .section-icon-box { width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; font-size: 24px; background: linear-gradient(135deg, #06b6d4, #2563eb); box-shadow: 0 12px 30px rgba(37, 99, 235, 0.28); }
-
-    @keyframes btnShimmer { 0% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
-    @keyframes softPulse { 0%,100% { opacity: 0.65; transform: scale(1); } 50% { opacity: 1; transform: scale(1.08); } }
-    @keyframes pingRing { 0% { transform: scale(0.9); opacity: 0.55; } 80%,100% { transform: scale(1.6); opacity: 0; } }
-    @keyframes testPulse { 0%,100% { opacity: 0.6; transform: scale(1); filter: hue-rotate(0deg); } 50% { opacity: 1; transform: scale(1.06); filter: hue-rotate(25deg); } }
-
-    .motion-btn { position: relative; overflow: hidden; isolation: isolate; transform: translateY(0) scale(1); transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease, background 0.22s ease, color 0.22s ease, opacity 0.22s ease; will-change: transform; }
-    .motion-btn::before { content: ""; position: absolute; inset: 0; z-index: -1; background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.18), transparent 32%), linear-gradient(120deg, transparent, rgba(255,255,255,0.16), transparent); transform: translateX(-120%); opacity: 0; pointer-events: none; }
-    .motion-btn:hover { transform: translateY(-3px) scale(1.035); box-shadow: 0 18px 35px rgba(0,0,0,0.32), 0 0 22px rgba(34,211,238,0.28); }
-    .motion-btn:hover::before { opacity: 1; animation: btnShimmer 1.4s ease-in-out infinite; }
-    .motion-btn:active { transform: translateY(1px) scale(0.97); box-shadow: 0 8px 18px rgba(0,0,0,0.28), 0 0 12px rgba(34,211,238,0.2); }
-    .motion-btn:disabled, .motion-btn.disabled { cursor: not-allowed; opacity: 0.5; filter: grayscale(0.35); transform: none; box-shadow: none; }
-    .motion-btn:disabled::before, .motion-btn.disabled::before { display: none; }
-    .motion-primary { background: linear-gradient(135deg, #06b6d4, #2563eb, #7c3aed); color: #ffffff; box-shadow: 0 12px 28px rgba(37,99,235,0.28), inset 0 1px 0 rgba(255,255,255,0.18); }
-    .motion-cyan { background: linear-gradient(135deg, #06b6d4, #2563eb); color: #ffffff; box-shadow: 0 12px 26px rgba(6,182,212,0.22), inset 0 1px 0 rgba(255,255,255,0.16); }
-    .motion-purple { background: linear-gradient(135deg, #a855f7, #ec4899); color: #ffffff; box-shadow: 0 12px 26px rgba(168,85,247,0.22), inset 0 1px 0 rgba(255,255,255,0.16); }
-    .motion-amber { background: linear-gradient(135deg, #f59e0b, #ea580c); color: #ffffff; box-shadow: 0 12px 26px rgba(245,158,11,0.22), inset 0 1px 0 rgba(255,255,255,0.16); }
-    .motion-red { background: linear-gradient(135deg, rgba(239,68,68,0.28), rgba(220,38,38,0.2)); color: #fca5a5; border: 1px solid rgba(248,113,113,0.25); }
-    .motion-red:hover { box-shadow: 0 18px 35px rgba(0,0,0,0.32), 0 0 22px rgba(239,68,68,0.28); }
-    .motion-green { background: linear-gradient(135deg, rgba(34,197,94,0.28), rgba(22,163,74,0.2)); color: #86efac; border: 1px solid rgba(74,222,128,0.25); }
-    .motion-green:hover { box-shadow: 0 18px 35px rgba(0,0,0,0.32), 0 0 22px rgba(34,197,94,0.28); }
-    .motion-teal { background: linear-gradient(135deg, rgba(20,184,166,0.32), rgba(13,148,136,0.22)); color: #5eead4; border: 1px solid rgba(45,212,191,0.3); box-shadow: 0 12px 26px rgba(20,184,166,0.18), inset 0 1px 0 rgba(255,255,255,0.12); }
-    .motion-teal:hover { box-shadow: 0 18px 35px rgba(0,0,0,0.32), 0 0 22px rgba(20,184,166,0.32); }
-    .motion-secondary { background: rgba(51,65,85,0.9); color: #e2e8f0; border: 1px solid rgba(148,163,184,0.15); }
-    .motion-secondary:hover { background: rgba(71,85,105,0.95); box-shadow: 0 18px 35px rgba(0,0,0,0.32), 0 0 18px rgba(148,163,184,0.18); }
-    /* 白色无边框幽灵按钮（用于首页归零按钮） */
-    .motion-ghost { background: rgba(255,255,255,0.04); color: #ffffff; border: none; box-shadow: none; }
-    .motion-ghost:hover { background: rgba(255,255,255,0.09); box-shadow: 0 14px 30px rgba(0,0,0,0.28), 0 0 20px rgba(255,255,255,0.08); }
-
-    .btn-icon, .mode-icon, .pose-icon { display: inline-flex; transition: transform 0.28s ease, filter 0.28s ease; }
-    .motion-btn:hover .btn-icon, .mode-card:hover .mode-icon, .pose-card:hover .pose-icon { transform: scale(1.12); filter: drop-shadow(0 0 8px rgba(255,255,255,0.35)); }
-    .motion-btn:hover .rotate-icon { transform: rotate(180deg) scale(1.1); }
-    .motion-btn:hover .close-icon { transform: rotate(90deg) scale(1.1); }
-    .motion-btn:hover .save-icon { transform: scale(1.18); }
-
-    .connection-card { max-width: 580px; margin: 0 auto 24px; }
-    .connection-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-    .connection-info { display: flex; align-items: center; gap: 14px; min-width: 0; }
-    .status-icon { position: relative; width: 54px; height: 54px; border-radius: 999px; display: grid; place-items: center; background: rgba(51,65,85,0.65); font-size: 26px; flex: 0 0 auto; z-index: 1; }
-    .status-icon.connected { background: rgba(34,197,94,0.18); }
-    .status-icon.connecting { background: rgba(6,182,212,0.16); animation: softPulse 1.2s ease-in-out infinite; }
-    .status-icon.test-mode { background: rgba(20,184,166,0.2); animation: testPulse 2s ease-in-out infinite; border: 2px solid rgba(45,212,191,0.35); }
-    .status-ping::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: rgba(34,197,94,0.38); animation: pingRing 1.6s cubic-bezier(0,0,0.2,1) infinite; z-index: -1; }
-    .connection-title { font-size: 19px; font-weight: 850; color: #f8fafc; }
-    .connection-subtitle { margin-top: 3px; color: var(--text-muted); font-size: 13px; }
-    .connection-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
-    .connect-btn { min-width: 190px; padding: 18px 24px; border-radius: 18px; display: inline-flex; align-items: center; justify-content: center; gap: 12px; font-weight: 850; font-size: 18px; }
-    .disconnect-btn, .small-btn { padding: 11px 16px; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-weight: 750; white-space: nowrap; }
-    .device-info { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; margin-top: 18px; color: var(--text-muted); font-size: 14px; }
-    .device-info strong { color: #cbd5e1; }
-
-    .test-mode-banner { display: inline-flex; align-items: center; gap: 10px; padding: 10px 18px; border-radius: 999px; background: rgba(20,184,166,0.15); border: 1px solid rgba(45,212,191,0.3); color: #5eead4; font-weight: 800; font-size: 14px; margin-top: 14px; animation: testPulse 2s ease-in-out infinite; letter-spacing: 0.06em; }
-    .test-mode-banner .test-dot { width: 10px; height: 10px; border-radius: 999px; background: #2dd4bf; box-shadow: 0 0 14px rgba(45,212,191,0.7); animation: softPulse 1s ease-in-out infinite; }
-
-    .mode-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
-    .mode-grid .mode-card { min-height: 112px; border-radius: 18px; border: 1px solid rgba(148,163,184,0.18); background: rgba(15,23,42,0.55); color: #cbd5e1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; font-weight: 800; font-size: 15px; }
-    .mode-grid .mode-card .mode-icon { font-size: 2rem; line-height: 1; }
-    .mode-grid .mode-card:hover { transform: translateY(-4px) scale(1.04); box-shadow: 0 16px 34px rgba(0,0,0,0.28), 0 0 24px rgba(96,165,250,0.22); }
-    .mode-grid .mode-card.active, .mode-grid .mode-card.is-active { position: relative; color: #ffffff; border-color: rgba(255,255,255,0.25); transform: translateY(-2px) scale(1.06); }
-    .mode-grid .mode-card.active::after, .mode-grid .mode-card.is-active::after { content: ""; position: absolute; left: 50%; bottom: -8px; width: 34px; height: 4px; border-radius: 999px; background: #ffffff; transform: translateX(-50%); box-shadow: 0 0 14px rgba(255,255,255,0.65); }
-    .mode-grid .mode-card.active[data-mode="cylinder"], .mode-grid .mode-card.is-active[data-mode="cylinder"] { background: linear-gradient(135deg, #06b6d4, #2563eb); box-shadow: 0 16px 34px rgba(37,99,235,0.28); }
-    .mode-grid .mode-card.active[data-mode="two-finger"], .mode-grid .mode-card.is-active[data-mode="two-finger"] { background: linear-gradient(135deg, #a855f7, #ec4899); box-shadow: 0 16px 34px rgba(168,85,247,0.28); }
-    .mode-grid .mode-card.active[data-mode="pose"], .mode-grid .mode-card.is-active[data-mode="pose"] { background: linear-gradient(135deg, #f59e0b, #ea580c); box-shadow: 0 16px 34px rgba(245,158,11,0.28); }
-    .mode-grid .mode-card.active[data-mode="debug"], .mode-grid .mode-card.is-active[data-mode="debug"] { background: linear-gradient(135deg, #14b8a6, #0d9488); box-shadow: 0 16px 34px rgba(20,184,166,0.28); }
-
-    .mode-hint { margin-top: 14px; text-align: center; color: var(--text-soft); font-size: 13px; }
-
-    .waiting-panel { text-align: center; padding: 70px 20px; color: var(--text-soft); }
-    .waiting-icon { width: 96px; height: 96px; border-radius: 999px; display: grid; place-items: center; margin: 0 auto 20px; background: rgba(30,41,59,0.78); font-size: 48px; animation: softPulse 1.8s ease-in-out infinite; }
-    .waiting-title { color: var(--text-muted); font-size: 19px; font-weight: 800; margin-bottom: 8px; }
-    .waiting-text { margin: 0 auto; max-width: 640px; line-height: 1.75; font-size: 14px; }
-    .warning { margin-top: 18px; color: #fbbf24; font-size: 13px; }
-    .control-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
-    .control-grid.three { grid-template-columns: repeat(3, 1fr); }
-    .control-btn { min-height: 118px; padding: 18px; border-radius: 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-weight: 850; gap: 7px; text-align: center; }
-    .control-btn .btn-icon { font-size: 32px; line-height: 1; }
-    .control-btn small { color: rgba(255,255,255,0.7); font-size: 12px; font-weight: 700; }
-    .motion-secondary small { color: #94a3b8; }
-
-    /* 首页居中归零按钮 */
-    .home-reset-section { text-align: center; margin-top: 20px; }
-    .home-reset-btn { padding: 16px 34px; border-radius: 16px; font-size: 17px; font-weight: 800; display: inline-flex; align-items: center; gap: 12px; }
-    .home-reset-btn .btn-icon { font-size: 24px; }
-    .home-reset-hint { margin-top: 12px; color: var(--text-soft); font-size: 12px; }
-
-    .pose-header { text-align: center; margin-bottom: 24px; }
-    .pose-pill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px; color: #fbbf24; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.22); font-weight: 800; margin-bottom: 12px; }
-    .pose-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-    .pose-grid.preset { grid-template-columns: repeat(2, 1fr); max-width: 640px; margin-left: auto; margin-right: auto; }
-    .pose-card { position: relative; min-height: 142px; overflow: hidden; border-radius: 18px; border: 1px solid rgba(148,163,184,0.18); background: rgba(15,23,42,0.55); color: #cbd5e1; padding: 18px; transition: transform 0.24s ease, box-shadow 0.24s ease, border-color 0.24s ease, background 0.24s ease, color 0.24s ease; }
-    .pose-card::before { content: ""; position: absolute; inset: 0; background: linear-gradient(120deg, transparent, rgba(255,255,255,0.12), transparent); transform: translateX(-120%); opacity: 0; }
-    .pose-card:hover { transform: translateY(-5px) scale(1.035); border-color: rgba(251,191,36,0.45); box-shadow: 0 18px 35px rgba(0,0,0,0.3), 0 0 22px rgba(245,158,11,0.24); }
-    .pose-card:hover::before { opacity: 1; animation: btnShimmer 1.6s ease-in-out infinite; }
-    .pose-card.active, .pose-card.is-active { transform: translateY(-2px) scale(1.055); background: linear-gradient(135deg, #f59e0b, #ea580c); color: white; border-color: rgba(255,255,255,0.18); box-shadow: 0 18px 38px rgba(234,88,12,0.32), 0 0 26px rgba(245,158,11,0.32); }
-    .pose-card.active::after, .pose-card.is-active::after { content: ""; position: absolute; top: 12px; right: 12px; width: 8px; height: 8px; border-radius: 999px; background: #ffffff; animation: softPulse 1.2s ease-in-out infinite; }
-    .pose-icon { display: block; font-size: 40px; margin-bottom: 10px; line-height: 1; }
-    .pose-title { font-size: 18px; font-weight: 900; color: #f8fafc; margin-bottom: 4px; }
-    .pose-desc { font-size: 14px; color: var(--text-soft); }
-    .pose-card.active .pose-desc, .pose-card.is-active .pose-desc { color: rgba(255,237,213,0.9); }
-    .pose-reset-row { display: flex; justify-content: center; margin-bottom: 18px; width: 100%;}
-
-    .debug-status { display: inline-flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 13px; white-space: nowrap; }
-    .live-dot { width: 9px; height: 9px; border-radius: 999px; background: var(--green); animation: softPulse 1.2s ease-in-out infinite; box-shadow: 0 0 14px rgba(34,197,94,0.65); }
-    .joint-list { display: grid; gap: 18px; margin-bottom: 24px; }
-    .joint-row { display: grid; gap: 8px; }
-    .joint-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    .joint-label { display: inline-flex; align-items: center; gap: 8px; color: #cbd5e1; font-size: 14px; font-weight: 750; }
-    .joint-dot { width: 12px; height: 12px; border-radius: 999px; }
-    .joint-value { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; color: #22d3ee; font-weight: 900; min-width: 110px; text-align: right; }
-    .joint-value .joint-pct { color: #94a3b8; font-weight: 700; margin-left: 8px; font-size: 12px; }
-    .range-shell { position: relative; height: 26px; border-radius: 999px; background: rgba(2,6,23,0.78); overflow: hidden; border: 1px solid rgba(148,163,184,0.1); }
-    .range-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0%; opacity: 0.75; transition: width 0.08s linear; }
-    .range-thumb { position: absolute; top: 50%; width: 18px; height: 18px; border-radius: 999px; background: #ffffff; transform: translate(-50%, -50%); box-shadow: 0 0 16px rgba(255,255,255,0.5), 0 4px 12px rgba(0,0,0,0.3); pointer-events: none; transition: left 0.08s linear; }
-    input[type="range"].joint-range { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; margin: 0; }
-    .debug-actions { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; padding-top: 18px; border-top: 1px solid rgba(148,163,184,0.16); }
-
-    .log-card { margin-top: 24px; }
-    .log-header-actions { display: flex; align-items: center; gap: 10px; }
-    .log-box { min-height: 136px; max-height: 260px; overflow: auto; padding: 14px; border-radius: 16px; background: rgba(2,6,23,0.58); border: 1px solid rgba(148,163,184,0.12); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 13px; line-height: 1.65; color: #cbd5e1; }
-    .log-empty { color: var(--text-soft); }
-    .log-entry { display: grid; grid-template-columns: auto 1fr; gap: 10px; padding: 3px 0; border-bottom: 1px dashed rgba(148,163,184,0.08); }
-    .log-entry:last-child { border-bottom: none; }
-    .log-time { color: #64748b; }
-    .log-info { color: #93c5fd; }
-    .log-success { color: #86efac; }
-    .log-error { color: #fca5a5; }
-    .log-send { color: #fbbf24; }
-    .log-recv { color: #c084fc; }
-    .log-test { color: #5eead4; }
-    .uuid-grid { display: grid; grid-template-columns: auto 1fr; gap: 8px 12px; margin-top: 16px; color: var(--text-muted); font-size: 13px; overflow-wrap: anywhere; }
-    .uuid-grid strong { color: #cbd5e1; }
-
-    .footer { margin-top: 44px; text-align: center; }
-    .footer-pill { display: inline-flex; align-items: center; justify-content: center; gap: 18px; flex-wrap: wrap; padding: 12px 18px; border-radius: 999px; background: rgba(15,23,42,0.55); border: 1px solid rgba(148,163,184,0.16); color: var(--text-soft); font-size: 12px; backdrop-filter: blur(12px); }
-    .footer-item { display: inline-flex; align-items: center; gap: 7px; }
-    .footer-divider { width: 1px; height: 16px; background: rgba(148,163,184,0.22); }
-
-    .fade-in { animation: fadeIn 0.38s ease both; }
-    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-    @media (max-width: 760px) {
-      .app { padding: 22px 12px 40px; }
-      .glass-card { padding: 18px; }
-      .subtitle-row { gap: 10px; }
-      .subtitle-line { width: 36px; }
-      .connection-row { align-items: stretch; flex-direction: column; }
-      .connection-actions { justify-content: stretch; }
-      .connect-btn, .disconnect-btn { width: 100%; }
-      .mode-grid, .control-grid, .control-grid.three, .pose-grid, .pose-grid.preset { grid-template-columns: 1fr; }
-      .section-title-row { align-items: flex-start; }
-      .debug-status { margin-top: 4px; }
-      .uuid-grid, .device-info { grid-template-columns: 1fr; }
-      .footer-divider { display: none; }
-    }
-    @media (prefers-reduced-motion: reduce) {
-      *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: 0.001ms !important; }
-      .motion-btn:hover, .mode-grid .mode-card:hover, .pose-card:hover { transform: none; }
-    }
-
-    .custom-pose-section { margin-top: 28px; padding-top: 22px; border-top: 1px dashed rgba(148, 163, 184, 0.22); }
-    .custom-pose-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-    .custom-pose-title { display: inline-flex; align-items: center; gap: 8px; color: #fbbf24; font-weight: 850; font-size: 16px; }
-    .custom-pose-count { color: var(--text-soft); font-size: 13px; padding: 4px 10px; border-radius: 999px; background: rgba(148, 163, 184, 0.12); }
-    .custom-pose-empty { text-align: center; color: var(--text-soft); font-size: 13px; padding: 24px 12px; margin: 0; }
-
-    .pose-card.custom { padding-top: 20px; }
-    .pose-card .delete-btn { position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; border-radius: 999px; display: grid; place-items: center; background: rgba(239, 68, 68, 0.18); color: #fca5a5; font-size: 14px; border: 1px solid rgba(248, 113, 113, 0.25); opacity: 0; transition: opacity 0.2s ease, transform 0.2s ease; z-index: 2; cursor: pointer; }
-    .pose-card:hover .delete-btn { opacity: 1; }
-    .pose-card .delete-btn:hover { background: rgba(239, 68, 68, 0.35); transform: scale(1.15); }
-
-    .modal-mask { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; background: rgba(2, 6, 23, 0.72); backdrop-filter: blur(6px); animation: fadeIn 0.24s ease both; }
-    .modal-box { width: min(92vw, 440px); padding: 26px; }
-    .modal-title { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 900; color: #f8fafc; margin-bottom: 10px; }
-    .modal-desc { margin: 0 0 16px; color: var(--text-muted); font-size: 13px; line-height: 1.6; }
-    .modal-input { width: 100%; box-sizing: border-box; padding: 12px 14px; margin-bottom: 12px; border-radius: 12px; background: rgba(2, 6, 23, 0.6); border: 1px solid rgba(148, 163, 184, 0.25); color: var(--text-main); font-size: 15px; outline: none; transition: border-color 0.2s ease, box-shadow 0.2s ease; }
-    .modal-input:focus { border-color: rgba(34, 211, 238, 0.6); box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.15); }
-    .modal-error { color: #fca5a5; font-size: 12px; margin-bottom: 12px; min-height: 16px; }
-    .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
-
-    /* 新增：拼音预览行 */
-    .pinyin-preview {
-      display: flex; align-items: center; gap: 8px;
-      padding: 10px 12px; margin-bottom: 12px;
-      border-radius: 10px; background: rgba(6, 182, 212, 0.08);
-      border: 1px solid rgba(34, 211, 238, 0.18);
-      font-size: 13px; color: var(--text-muted);
-    }
-    .pinyin-preview .pinyin-label { color: #22d3ee; font-weight: 800; letter-spacing: 0.06em; }
-    .pinyin-preview .pinyin-value { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; color: #e2e8f0; font-weight: 700; }
-    .pinyin-preview .pinyin-value.placeholder { color: var(--text-soft); font-weight: 500; }
-  </style>
+        .overlay-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.45);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .overlay-modal.show { display: flex; }
+        .modal-box {
+            background: #fff;
+            border-radius: 12px;
+            padding: 24px;
+            width: min(90vw, 360px);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.2);
+            text-align: left;
+        }
+        .modal-box h3 { margin-top: 0; text-align: center; }
+        .modal-box input[type=text] {
+            width: 100%;
+            box-sizing: border-box;
+            font-size: 16px;
+            padding: 10px;
+            margin: 12px 0 16px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+        }
+        .modal-actions { display: flex; gap: 10px; justify-content: center; }
+        .modal-actions button {
+            min-width: 100px;
+            margin: 0;
+        }
+        #confirmSavePoseBtn {
+            background-color: #bdc3c7;
+            color: #fff;
+            border: none;
+            cursor: not-allowed;
+        }
+        #confirmSavePoseBtn.enabled {
+            background-color: #2ecc71;
+            cursor: pointer;
+        }
+    </style>
 </head>
-
 <body>
-  <div class="tech-bg"></div>
-  <div class="orb orb-blue"></div>
-  <div class="orb orb-purple"></div>
-  <div class="orb orb-cyan"></div>
-  <div class="corner corner-tl"></div>
-  <div class="corner corner-tr"></div>
-  <div class="corner corner-bl"></div>
-  <div class="corner corner-br"></div>
 
-  <main class="app">
-    <div class="container">
-      <header class="header">
-        <div class="badge">
-          <span class="badge-icon">📡</span>
-          <span>BLUETOOTH 5.0</span>
-        </div>
-        <h1 class="title">灵巧手控制台</h1>
-        <div class="subtitle-row">
-          <div class="subtitle-line"></div>
-          <div>智能仿生手蓝牙控制系统 · WebBLE Ready</div>
-          <div class="subtitle-line right"></div>
-        </div>
-        <div id="testModeBanner" class="test-mode-banner hidden">
-          <span class="test-dot"></span>
-          <span>🧪 测试模式已激活 · 模拟BLE连接</span>
-        </div>
-      </header>
-
-      <section class="glass-card glow-card connection-card">
-        <div class="connection-row">
-          <div class="connection-info">
-            <div id="statusIcon" class="status-icon">📡</div>
-            <div>
-              <div id="connectionTitle" class="connection-title">未连接</div>
-              <div id="connectionSubtitle" class="connection-subtitle">等待设备信号...</div>
-            </div>
-          </div>
-          <div class="connection-actions">
-            <button id="connectBtn" class="connect-btn motion-btn motion-primary" type="button">
-              <span class="btn-icon">🔗</span>
-              <span id="connectBtnText">连接设备</span>
-            </button>
-            <button id="disconnectBtn" class="disconnect-btn motion-btn motion-red hidden" type="button">
-              <span class="btn-icon">🔌</span>
-              <span>断开</span>
-            </button>
-            <button id="testModeBtn" class="disconnect-btn motion-btn motion-teal hidden" type="button">
-              <span class="btn-icon">🧪</span>
-              <span>测试模式</span>
-            </button>
-            <button id="exitTestBtn" class="disconnect-btn motion-btn motion-red hidden" type="button">
-              <span class="btn-icon">🚪</span>
-              <span>退出测试</span>
-            </button>
-          </div>
-        </div>
-        <div id="deviceInfo" class="device-info hidden">
-          <strong>设备名：</strong>
-          <span id="deviceName">ESP32_Hand</span>
-        </div>
-      </section>
-
-      <section id="modeSelector" class="glass-card glow-card section hidden">
-        <div class="section-title-row">
-          <div>
-            <h2 class="section-title">操作模式选择</h2>
-            <p class="section-desc">点击卡片进入模式，再次点击退回首页</p>
-          </div>
-        </div>
-        <div class="mode-grid">
-          <button id="modeCylinderBtn" class="mode-btn mode-card motion-btn motion-cyan" data-mode="cylinder" type="button">
-            <span class="mode-icon">✊</span>
-            <span>圆柱抓握</span>
-          </button>
-          <button id="modeTwoFingerBtn" class="mode-btn mode-card motion-btn motion-purple" data-mode="two-finger" type="button">
-            <span class="mode-icon">🤏</span>
-            <span>二指抓握</span>
-          </button>
-          <button id="modePoseBtn" class="mode-btn mode-card motion-btn motion-amber" data-mode="pose" type="button">
-            <span class="mode-icon">⚙️</span>
-            <span>Pose展示</span>
-          </button>
-          <button id="modeDebugBtn" class="mode-btn mode-card motion-btn motion-teal" data-mode="debug" type="button">
-            <span class="mode-icon">🛠️</span>
-            <span>位姿调试</span>
-          </button>
-        </div>
-        <div id="modeHint" class="mode-hint">当前模式：未选中（手掌完全张开）</div>
-      </section>
-
-      <section id="waitingPanel" class="glass-card section waiting-panel">
-        <div class="waiting-icon">🦾</div>
-        <div class="waiting-title">等待设备连接...</div>
-        <p id="waitingText" class="waiting-text">
-          请确保灵巧手已开启蓝牙并处于配对模式，然后点击右上角"连接设备"。
-        </p>
-        <p class="warning">
-          Web Bluetooth 需要 Chrome 或 Edge。页面需要通过 localhost 或 HTTPS 打开。
-        </p>
-      </section>
-
-      <!-- 首页：居中的重新归零按钮（连接后未选任何模式时显示） -->
-      <section id="homeResetSection" class="home-reset-section hidden">
-        <button id="homeResetBtn" class="motion-btn motion-ghost home-reset-btn" type="button">
-          <span class="btn-icon rotate-icon">
-            <svg viewBox="0 0 1024 1024" width="1em" height="1em" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-              <path d="M943.8 484.1c-17.5-13.7-42.8-10.7-56.6 6.8-5.7 7.3-8.5 15.8-8.6 24.4h-0.4c-0.6 78.3-26.1 157-78 223.3-124.9 159.2-356 187.1-515.2 62.3-31.7-24.9-58.2-54-79.3-85.9h77.1c22.4 0 40.7-18.3 40.7-40.7v-3c0-22.4-18.3-40.7-40.7-40.7H105.5c-22.4 0-40.7 18.3-40.7 40.7v177.3c0 22.4 18.3 40.7 40.7 40.7h3c22.4 0 40.7-18.3 40.7-40.7v-73.1c24.2 33.3 53 63.1 86 89 47.6 37.3 101 64.2 158.9 79.9 55.9 15.2 113.5 19.3 171.2 12.3 57.7-7 112.7-24.7 163.3-52.8 52.5-29 98-67.9 135.3-115.4 37.3-47.6 64.2-101 79.9-158.9 10.2-37.6 15.4-76 15.6-114.6h-0.1c-0.3-11.6-5.5-23.1-15.5-30.9zM918.7 135.2h-3c-22.4 0-40.7 18.3-40.7 40.7V249c-24.2-33.3-53-63.1-86-89-47.6-37.3-101-64.2-158.9-79.9-55.9-15.2-113.5-19.3-171.2-12.3-57.7 7-112.7 24.7-163.3 52.8-52.5 29-98 67.9-135.3 115.4-37.3 47.5-64.2 101-79.9 158.8-10.2 37.6-15.4 76-15.6 114.6h0.1c0.2 11.7 5.5 23.2 15.4 30.9 17.5 13.7 42.8 10.7 56.6-6.8 5.7-7.3 8.5-15.8 8.6-24.4h0.4c0.6-78.3 26.1-157 78-223.3 124.9-159.2 356-187.1 515.2-62.3 31.7 24.9 58.2 54 79.3 85.9h-77.1c-22.4 0-40.7 18.3-40.7 40.7v3c0 22.4 18.3 40.7 40.7 40.7h177.3c22.4 0 40.7-18.3 40.7-40.7V175.8c0.1-22.3-18.2-40.6-40.6-40.6z"/>
-            </svg>
-          </span>
-          <span>重新开机归零</span>
-        </button>
-        <div class="home-reset-hint">选择上方任一模式进入对应控制界面</div>
-      </section>
-
-      <section id="cylinderPanel" class="glass-card glow-card section hidden">
-        <div class="section-title-row">
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <div class="section-icon-box">✊</div>
-            <div>
-              <h2 class="section-title">圆柱抓握控制</h2>
-              <p class="section-desc">适用于抓取圆柱形物体</p>
-            </div>
-          </div>
-        </div>
-        <div class="control-grid">
-          <button id="cylinderGraspBtn" class="control-btn motion-btn motion-cyan" type="button">
-            <span class="btn-icon">✊</span><span>抓握</span><small>Grasp</small>
-          </button>
-          <button id="cylinderReleaseBtn" class="control-btn motion-btn motion-secondary" type="button">
-            <span class="btn-icon">🖐️</span><span>松开</span><small>Release</small>
-          </button>
-        </div>
-      </section>
-
-      <section id="twoFingerPanel" class="glass-card glow-card section hidden">
-        <div class="section-title-row">
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <div class="section-icon-box" style="background: linear-gradient(135deg, #a855f7, #ec4899);">🤏</div>
-            <div>
-              <h2 class="section-title">二指抓握控制</h2>
-              <p class="section-desc">精确夹持模式，适用于细小物体</p>
-            </div>
-          </div>
-        </div>
-        <div class="control-grid three">
-          <button id="twoFingerGraspBtn" class="control-btn motion-btn motion-cyan" type="button">
-            <span class="btn-icon">✊</span><span>抓握</span><small>Grasp</small>
-          </button>
-          <button id="twoFingerReleaseBtn" class="control-btn motion-btn motion-secondary" type="button">
-            <span class="btn-icon">🖐️</span><span>松开</span><small>Release</small>
-          </button>
-          <button id="indexZeroBtn" class="control-btn motion-btn motion-purple" type="button">
-            <span class="btn-icon">👆</span><span>食指寻零</span><small>Index Zero</small>
-          </button>
-        </div>
-      </section>
-
-      <section id="posePanel" class="glass-card glow-card section hidden">
-        <div class="pose-header">
-          <div class="pose-pill"><span>✨</span><span>手势 Pose 库</span></div>
-          <h2 class="section-title">选择预设手势</h2>
-          <p class="section-desc">点击卡片执行对应手势动作</p>
+    <h2>🤖 灵巧手 WebBLE 控制台</h2>
+    <div id="status">状态: 未连接</div>
+    
+    <button id="connectBtn" onclick="connectBLE()">连接灵巧手</button>
+    <br>
+    
+    <!-- 基础控制按钮 -->
+    <div id="baseControls">
+        <!-- 新增模式切换选项 -->
+        <div style="margin-bottom: 15px;">
+            <div id="modeHint">当前模式: 未选中（手掌完全张开）</div>
+            <button class="modeBtn" id="modePower" onclick="toggleMode(0)">圆柱抓握</button>
+            <button class="modeBtn" id="modePinch" onclick="toggleMode(1)">二指抓握</button>
+            <button class="modeBtn" id="modePose" onclick="toggleMode(2)">Pose展示</button>
         </div>
 
-        <div class="pose-reset-row">
-          <button id="poseResetBtn" class="small-btn motion-btn motion-secondary" type="button">
-            <span class="btn-icon rotate-icon">
-              <svg viewBox="0 0 1024 1024" width="1em" height="1em" fill="currentColor" xmlns="http://www.w3.org/2000/svg" style="vertical-align: middle;">
-                <path d="M943.8 484.1c-17.5-13.7-42.8-10.7-56.6 6.8-5.7 7.3-8.5 15.8-8.6 24.4h-0.4c-0.6 78.3-26.1 157-78 223.3-124.9 159.2-356 187.1-515.2 62.3-31.7-24.9-58.2-54-79.3-85.9h77.1c22.4 0 40.7-18.3 40.7-40.7v-3c0-22.4-18.3-40.7-40.7-40.7H105.5c-22.4 0-40.7 18.3-40.7 40.7v177.3c0 22.4 18.3 40.7 40.7 40.7h3c22.4 0 40.7-18.3 40.7-40.7v-73.1c24.2 33.3 53 63.1 86 89 47.6 37.3 101 64.2 158.9 79.9 55.9 15.2 113.5 19.3 171.2 12.3 57.7-7 112.7-24.7 163.3-52.8 52.5-29 98-67.9 135.3-115.4 37.3-47.6 64.2-101 79.9-158.9 10.2-37.6 15.4-76 15.6-114.6h-0.1c-0.3-11.6-5.5-23.1-15.5-30.9zM918.7 135.2h-3c-22.4 0-40.7 18.3-40.7 40.7V249c-24.2-33.3-53-63.1-86-89-47.6-37.3-101-64.2-158.9-79.9-55.9-15.2-113.5-19.3-171.2-12.3-57.7 7-112.7 24.7-163.3 52.8-52.5 29-98 67.9-135.3 115.4-37.3 47.5-64.2 101-79.9 158.8-10.2 37.6-15.4 76-15.6 114.6h0.1c0.2 11.7 5.5 23.2 15.4 30.9 17.5 13.7 42.8 10.7 56.6-6.8 5.7-7.3 8.5-15.8 8.6-24.4h0.4c0.6-78.3 26.1-157 78-223.3 124.9-159.2 356-187.1 515.2-62.3 31.7 24.9 58.2 54 79.3 85.9h-77.1c-22.4 0-40.7 18.3-40.7 40.7v3c0 22.4 18.3 40.7 40.7 40.7h177.3c22.4 0 40.7-18.3 40.7-40.7V175.8c0.1-22.3-18.2-40.6-40.6-40.6z"/>
-              </svg>
-            </span>
-            <span>回到零点</span>
-          </button>
+        <div id="graspControls">
+        <button class="cmdBtn" onclick="sendGrasp()">✊ 抓握 (Grasp)</button>
+        <button class="cmdBtn" onclick="sendRelease()">🖐️ 松开 (Release)</button>
+        <button class="cmdBtn" onclick="sendHoming()">🤖 重新开机归零</button>
+        <button class="cmdBtn" id="indexRehomeBtn" onclick="sendPinchRehome()" style="background-color: #8e44ad; display: none;">👆 食指单独寻零</button>
         </div>
-
-        <!-- 预设手势：2×2 布局 -->
-        <div class="pose-grid preset">
-          <button class="pose-card" data-pose="point" data-cmd="30" type="button">
-            <span class="pose-icon">☝️</span>
-            <div class="pose-title">伸食指</div>
-            <div class="pose-desc">指向目标</div>
-          </button>
-          <button class="pose-card" data-pose="ok" data-cmd="31" type="button">
-            <span class="pose-icon">👌</span>
-            <div class="pose-title">OK 手势</div>
-            <div class="pose-desc">确认操作</div>
-          </button>
-          <button class="pose-card" data-pose="peace" data-cmd="32" type="button">
-            <span class="pose-icon">✌️</span>
-            <div class="pose-title">耶手势</div>
-            <div class="pose-desc">胜利姿态</div>
-          </button>
-          <button class="pose-card" data-pose="ily" data-cmd="33" type="button">
-            <span class="pose-icon">🤟</span>
-            <div class="pose-title">ILY 手势</div>
-            <div class="pose-desc">表达爱意</div>
-          </button>
-        </div>
-
-        <div class="custom-pose-section">
-          <div class="custom-pose-header">
-            <span class="custom-pose-title">
-              <span>⭐</span>
-              <span>自定义姿态（存储于设备 Flash）</span>
-            </span>
-            <span id="customPoseCount" class="custom-pose-count">0 个</span>
-          </div>
-          <div id="customPoseGrid" class="pose-grid"></div>
-          <p id="customPoseEmpty" class="custom-pose-empty">
-            暂无自定义姿态。进入「位姿调试」调整后点击「记录并保存」即可添加。
-          </p>
-        </div>
-      </section>
-
-      <section id="debugPanel" class="glass-card glow-card section hidden">
-        <div class="section-title-row">
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <div class="section-icon-box" style="background: linear-gradient(135deg, #14b8a6, #0d9488);">🛠️</div>
-            <div>
-              <h2 class="section-title">位姿动态调试</h2>
-              <p class="section-desc">
-                以五指张开准备姿态为基准：0 = 张开，向右拖动 = 握紧方向（每关节量程独立）
-              </p>
-            </div>
-          </div>
-          <div class="debug-status">
-            <span class="live-dot"></span>
-            <span id="debugStatusText">实时传输中 (30ms 节流)</span>
-          </div>
-        </div>
-
-        <div id="jointList" class="joint-list"></div>
-
-        <div class="debug-actions">
-          <button id="exitDebugBtn" class="small-btn motion-btn motion-red" type="button">
-            <span class="btn-icon close-icon">❌</span>
-            <span>退出调试 (自动复位)</span>
-          </button>
-          <button id="savePoseBtn" class="small-btn motion-btn motion-green" type="button">
-            <span class="btn-icon save-icon">💾</span>
-            <span>记录并保存当前姿态</span>
-          </button>
-        </div>
-      </section>
-
-      <section class="glass-card glow-card section log-card">
-        <div class="section-title-row">
-          <div>
-            <h2 class="section-title">通信日志</h2>
-            <p class="section-desc">BLE 连接状态、发送和接收记录（二进制协议）</p>
-          </div>
-          <div class="log-header-actions">
-            <button id="clearLogBtn" class="small-btn motion-btn motion-secondary" type="button">清空日志</button>
-          </div>
-        </div>
-        <div id="logBox" class="log-box"><div class="log-empty">暂无日志。</div></div>
-        <div class="uuid-grid">
-          <strong>Service UUID：</strong>
-          <span>12345678-1234-5678-1234-56789abcdef0</span>
-          <strong>Write UUID：</strong>
-          <span>12345678-1234-5678-1234-56789abcdef1</span>
-          <strong>Notify UUID：</strong>
-          <span>12345678-1234-5678-1234-56789abcdef2</span>
-        </div>
-      </section>
-
-      <footer class="footer">
-        <div class="footer-pill">
-          <span class="footer-item" id="footerStatus">
-            <span class="live-dot"></span>
-            <span id="footerStatusText">系统正常</span>
-          </span>
-          <span class="footer-divider"></span>
-          <span>© 2024 Dexterous Hand</span>
-          <span class="footer-divider"></span>
-          <span class="footer-item">
-            <span>⚡</span>
-            <span>WebBLE Ready</span>
-          </span>
-        </div>
-      </footer>
+        <br><br>
+        <button class="debugBtn" id="enterDebugBtn" onclick="enterDebugMode()">🛠️ 进入位姿调试</button>
     </div>
 
-    <!-- 保存姿态弹窗 -->
-    <div id="savePoseModal" class="modal-mask hidden">
-      <div class="modal-box glass-card">
-        <div class="modal-title">
-          <span>💾</span>
-          <span>为当前姿态命名</span>
+    <!-- Pose 展示面板 -->
+    <div id="posePanel">
+        <h3>Pose 展示</h3>
+        <p style="font-size: 14px; color: #666;">预设手势固定保留；自定义手势右键可删除</p>
+        <button class="poseBtn" onclick="sendBuiltinPose(0)">☝️ 伸食指</button>
+        <button class="poseBtn" onclick="sendBuiltinPose(1)">👌 OK 手势</button>
+        <br>
+        <button class="poseBtn" onclick="sendBuiltinPose(2)">✌️ 耶手势</button>
+        <button class="poseBtn" onclick="sendBuiltinPose(3)">🤟 ILY 手势</button>
+        <div id="poseListSection">
+            <h4>已保存的自定义姿态</h4>
+            <div id="customPoseButtons"></div>
+            <p id="poseHint"></p>
         </div>
-        <p class="modal-desc">
-          名称必须为<strong style="color:#22d3ee;">中文</strong>，系统将自动生成语音命令词（拼音）并保存到设备 Flash。
-        </p>
-        <input id="poseNameInput" type="text" class="modal-input"
-              maxlength="12" placeholder="例如：点赞手势" autocomplete="off" />
-        <!-- 新增：拼音实时预览 -->
-        <div class="pinyin-preview">
-          <span class="pinyin-label">语音命令词：</span>
-          <span id="pinyinPreview" class="pinyin-value placeholder">-</span>
-        </div>
-        <div id="poseNameError" class="modal-error hidden"></div>
-        <div class="modal-actions">
-          <button id="cancelSavePoseBtn" class="small-btn motion-btn motion-secondary" type="button">
-            <span>取消</span>
-          </button>
-          <button id="confirmSavePoseBtn" class="small-btn motion-btn motion-green" type="button" disabled>
-            <span class="btn-icon save-icon">💾</span>
-            <span>确定保存</span>
-          </button>
-        </div>
-      </div>
+        <br><br>
+        <button class="cmdBtn" onclick="sendRelease()" style="display: inline-block; background-color: #34495e;">🔄 回到零点</button>
     </div>
 
-    <!-- 删除确认弹窗 -->
-    <div id="deletePoseModal" class="modal-mask hidden">
-      <div class="modal-box glass-card">
-        <div class="modal-title">
-          <span>🗑️</span>
-          <span>确认删除姿态</span>
-        </div>
-        <p class="modal-desc">
-          将永久从设备 Flash 中删除姿态「<span id="deletePoseName" style="color:#fbbf24;font-weight:800;"></span>」。此操作不可恢复。
-        </p>
-        <div class="modal-actions">
-          <button id="cancelDeleteBtn" class="small-btn motion-btn motion-secondary" type="button">
-            <span>取消</span>
-          </button>
-          <button id="confirmDeleteBtn" class="small-btn motion-btn motion-red" type="button">
-            <span class="btn-icon">🗑️</span>
-            <span>确定删除</span>
-          </button>
-        </div>
-      </div>
+    <!-- 调试面板 -->
+    <div id="debugPanel">
+        <h3>位姿动态调试</h3>
+        <p style="font-size: 14px; color: #666;">以五指张开准备姿态为基准：0=张开，向右拖=握紧方向</p>
+        
+        <!-- 滑块由 JS 动态生成 -->
+        <div id="sliders"></div>
+
+        <br>
+        <button style="background-color: #e74c3c; color: white; border: none;" onclick="exitDebugMode()">❌ 退出调试 (自动复位)</button>
+        <button style="background-color: #2ecc71; color: white; border: none;" onclick="openSavePoseModal()">💾 记录并保存当前姿态</button>
     </div>
-  </main>
 
-  <script>
-    /* =========================================================
-     * 测试模式全局开关
-     * ========================================================= */
-    const TEST_MODE = true;
-
-    /* =========================================================
-     * BLE 配置
-     * ========================================================= */
-    const DEVICE_NAME = "ESP32_Hand";
-    const SERVICE_UUID = "12345678-1234-5678-1234-56789abcdef0";
-    const CHARACTERISTIC_UUID = "12345678-1234-5678-1234-56789abcdef1";
-    const NOTIFY_CHARACTERISTIC_UUID = "12345678-1234-5678-1234-56789abcdef2";
-
-    /* =========================================================
-     * 协议常量
-     * ========================================================= */
-    const OP_ACTION       = 0x01;
-    const OP_SLIDER       = 0x02;
-    const OP_SAVE_POSE    = 0x03;
-    const OP_LIST_POSE    = 0x04;
-    const OP_TRIGGER_POSE = 0x05;
-    const OP_DELETE_POSE  = 0x06;
-
-    const CMD_GRASP       = 1;
-    const CMD_RELEASE     = 2;
-    const CMD_REBOOT      = 4;
-    const CMD_INDEX_ZERO  = 5;
-    const CMD_DEBUG_ENTER = 10;
-    const CMD_DEBUG_EXIT  = 11;
-    const CMD_MODE_CYL    = 20;
-    const CMD_MODE_TWO    = 21;
-    const CMD_MODE_POSE   = 22;
-    const CMD_MODE_DESEL  = 23;
-
-    const NTF_LIST_START  = 0x90;
-    const NTF_ENTRY       = 0x91;
-    const NTF_LIST_END    = 0x92;
-    const NTF_SAVED       = 0x93;
-    const NTF_SAVE_FAIL   = 0x94;
-    const NTF_DELETE_FAIL = 0x96;
-
-    const MAX_CUSTOM_POSES = 30;   // 最多允许保存的自定义姿态数量
-
-    /* =========================================================
-     * 系统保留的语音命令词（拼音，空格分隔，小写）
-     * 用户新建自定义姿态时，其拼音不能与这些冲突
-     * ========================================================= */
-    const RESERVED_PINYINS = [
-      'zhua wo', 'wo quan', 'song kai', 'chong xin gui ling',
-      'yuan zhu mo shi', 'er zhi mo shi', 'biao yan mo shi',
-      'yuan zhu zhua wo', 'er zhi zhua wo',
-      'shen shi zhi', 'ou ke shou shi', 'ye shou shi', 'wo ai ni'
-    ];
-
-    /* =========================================================
-     * 前端模式常量
-     * ========================================================= */
-    const MODES = {
-      CYLINDER:   "cylinder",
-      TWO_FINGER: "two-finger",
-      POSE:       "pose",
-      DEBUG:      "debug"
-    };
-    const MODE_TO_CMD = {
-      [MODES.CYLINDER]:   CMD_MODE_CYL,
-      [MODES.TWO_FINGER]: CMD_MODE_TWO,
-      [MODES.POSE]:       CMD_MODE_POSE
-    };
-    const MODE_LABEL = {
-      [MODES.CYLINDER]:   "圆柱抓握",
-      [MODES.TWO_FINGER]: "二指抓握",
-      [MODES.POSE]:       "Pose展示",
-      [MODES.DEBUG]:      "位姿调试"
-    };
-
-    /* =========================================================
-     * 关节配置
-     * ========================================================= */
-    const FINGER_JOINTS = [
-      { id: 0, name: "拇指外展", max: 1206, from: "#ef4444", to: "#dc2626" },
-      { id: 1, name: "拇指弯曲", max: 1324, from: "#f97316", to: "#ea580c" },
-      { id: 2, name: "拇指根部", max: 1371, from: "#f59e0b", to: "#d97706" },
-      { id: 3, name: "食指",     max: 3321, from: "#eab308", to: "#ca8a04" },
-      { id: 4, name: "中指",     max: 3369, from: "#22c55e", to: "#16a34a" },
-      { id: 5, name: "无名指",   max: 3511, from: "#06b6d4", to: "#0891b2" },
-      { id: 6, name: "小指",     max: 3298, from: "#3b82f6", to: "#2563eb" }
-    ];
-
-    /* =========================================================
-     * State
-     * ========================================================= */
-    let bluetoothDevice = null;
-    let bleWriteChar = null;
-    let bleNotifyChar = null;
-    let isConnected = false;
-    let isConnecting = false;
-    let isTestMode = false;
-    let currentMode = null;
-    let isDebugMode = false;
-    let activePose = null;
-    let jointPercents = FINGER_JOINTS.map(() => 0);
-    let savedPoses = [];              // { index, name, pinyin, offsets }
-    let poseListLoading = false;
-    let pendingDeleteIndex = null;
-
-    const sliderTimers = {};
-
-    let testPoseNextIndex = 0;
-    let testPoseList = [];
-
-    /* =========================================================
-     * DOM
-     * ========================================================= */
-    const els = {
-      statusIcon: document.getElementById("statusIcon"),
-      connectionTitle: document.getElementById("connectionTitle"),
-      connectionSubtitle: document.getElementById("connectionSubtitle"),
-      connectBtn: document.getElementById("connectBtn"),
-      connectBtnText: document.getElementById("connectBtnText"),
-      disconnectBtn: document.getElementById("disconnectBtn"),
-      testModeBtn: document.getElementById("testModeBtn"),
-      exitTestBtn: document.getElementById("exitTestBtn"),
-      testModeBanner: document.getElementById("testModeBanner"),
-      deviceInfo: document.getElementById("deviceInfo"),
-      deviceName: document.getElementById("deviceName"),
-
-      modeSelector: document.getElementById("modeSelector"),
-      modeHint: document.getElementById("modeHint"),
-      modeCylinderBtn: document.getElementById("modeCylinderBtn"),
-      modeTwoFingerBtn: document.getElementById("modeTwoFingerBtn"),
-      modePoseBtn: document.getElementById("modePoseBtn"),
-      modeDebugBtn: document.getElementById("modeDebugBtn"),
-
-      waitingPanel: document.getElementById("waitingPanel"),
-      waitingText: document.getElementById("waitingText"),
-      homeResetSection: document.getElementById("homeResetSection"),
-      homeResetBtn: document.getElementById("homeResetBtn"),
-      cylinderPanel: document.getElementById("cylinderPanel"),
-      twoFingerPanel: document.getElementById("twoFingerPanel"),
-      posePanel: document.getElementById("posePanel"),
-      debugPanel: document.getElementById("debugPanel"),
-      debugStatusText: document.getElementById("debugStatusText"),
-
-      cylinderGraspBtn: document.getElementById("cylinderGraspBtn"),
-      cylinderReleaseBtn: document.getElementById("cylinderReleaseBtn"),
-      twoFingerGraspBtn: document.getElementById("twoFingerGraspBtn"),
-      twoFingerReleaseBtn: document.getElementById("twoFingerReleaseBtn"),
-      indexZeroBtn: document.getElementById("indexZeroBtn"),
-
-      poseResetBtn: document.getElementById("poseResetBtn"),
-      jointList: document.getElementById("jointList"),
-      exitDebugBtn: document.getElementById("exitDebugBtn"),
-      savePoseBtn: document.getElementById("savePoseBtn"),
-
-      logBox: document.getElementById("logBox"),
-      clearLogBtn: document.getElementById("clearLogBtn"),
-      footerStatusText: document.getElementById("footerStatusText"),
-
-      customPoseGrid: document.getElementById("customPoseGrid"),
-      customPoseCount: document.getElementById("customPoseCount"),
-      customPoseEmpty: document.getElementById("customPoseEmpty"),
-
-      savePoseModal: document.getElementById("savePoseModal"),
-      poseNameInput: document.getElementById("poseNameInput"),
-      pinyinPreview: document.getElementById("pinyinPreview"),
-      poseNameError: document.getElementById("poseNameError"),
-      cancelSavePoseBtn: document.getElementById("cancelSavePoseBtn"),
-      confirmSavePoseBtn: document.getElementById("confirmSavePoseBtn"),
-
-      deletePoseModal: document.getElementById("deletePoseModal"),
-      deletePoseName: document.getElementById("deletePoseName"),
-      cancelDeleteBtn: document.getElementById("cancelDeleteBtn"),
-      confirmDeleteBtn: document.getElementById("confirmDeleteBtn")
-    };
-
-    /* =========================================================
-     * Init
-     * ========================================================= */
-    init();
-
-    function init() {
-      renderJointControls();
-      bindEvents();
-      setConnectionState(false, false);
-      currentMode = null;
-      updateModeCards();
-      renderCustomPoses();
-
-      if (TEST_MODE) {
-        els.testModeBtn.classList.remove("hidden");
-        els.waitingText.innerHTML =
-          '请确保灵巧手已开启蓝牙并处于配对模式，然后点击右上角"连接设备"。<br>' +
-          '也可以点击"🧪 测试模式"按钮进行模拟体验。';
-      }
-
-      updateUI();
-      addLog("页面已加载，等待连接 " + DEVICE_NAME, "info");
-      if (typeof pinyinPro === 'undefined') {
-        addLog("⚠️ 拼音库 pinyin-pro 加载失败，自定义姿态命名校验可能不可用", "error");
-      }
-      if (TEST_MODE) {
-        addLog("提示：点击「🧪 测试模式」可模拟蓝牙连接进行体验 (Ctrl+Shift+T)", "info");
-      }
-    }
-
-    function bindEvents() {
-      els.connectBtn.addEventListener("click", connectDevice);
-      els.disconnectBtn.addEventListener("click", disconnectDevice);
-
-      if (TEST_MODE) {
-        els.testModeBtn.addEventListener("click", enterTestMode);
-        els.exitTestBtn.addEventListener("click", exitTestMode);
-        document.addEventListener("keydown", (event) => {
-          if (event.ctrlKey && event.shiftKey && event.key === "T" && !isConnecting && !isConnected) {
-            event.preventDefault();
-            isTestMode ? exitTestMode() : enterTestMode();
-          }
-        });
-      }
-
-      els.modeCylinderBtn.addEventListener("click", () => toggleMode(MODES.CYLINDER));
-      els.modeTwoFingerBtn.addEventListener("click", () => toggleMode(MODES.TWO_FINGER));
-      els.modePoseBtn.addEventListener("click",     () => toggleMode(MODES.POSE));
-      els.modeDebugBtn.addEventListener("click",    () => toggleMode(MODES.DEBUG));
-
-      els.homeResetBtn.addEventListener("click", () => sendAction(CMD_REBOOT, "重新开机归零"));
-
-      els.cylinderGraspBtn.addEventListener("click",   () => sendAction(CMD_GRASP,   "抓握"));
-      els.cylinderReleaseBtn.addEventListener("click", () => sendAction(CMD_RELEASE, "松开"));
-
-      els.twoFingerGraspBtn.addEventListener("click",   () => sendAction(CMD_GRASP,      "抓握"));
-      els.twoFingerReleaseBtn.addEventListener("click", () => sendAction(CMD_RELEASE,    "松开"));
-      els.indexZeroBtn.addEventListener("click",        () => sendAction(CMD_INDEX_ZERO, "食指单独寻零"));
-
-      document.querySelectorAll(".pose-card[data-cmd]").forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const cmdId = Number(btn.dataset.cmd);
-          const poseId = btn.dataset.pose;
-          setActivePose(poseId);
-          sendAction(cmdId, "预设手势 " + poseId);
-        });
-      });
-
-      els.poseResetBtn.addEventListener("click", () => {
-        setActivePose(null);
-        sendAction(CMD_RELEASE, "回到零点");
-      });
-
-      els.exitDebugBtn.addEventListener("click", () => setMode(null));
-      els.savePoseBtn.addEventListener("click", openSavePoseModal);
-
-      els.cancelSavePoseBtn.addEventListener("click", closeSavePoseModal);
-      els.confirmSavePoseBtn.addEventListener("click", confirmSavePose);
-      els.poseNameInput.addEventListener("input", onPoseNameInput);
-      els.poseNameInput.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && !els.confirmSavePoseBtn.disabled) confirmSavePose();
-        if (e.key === "Escape") closeSavePoseModal();
-      });
-      els.savePoseModal.addEventListener("click", (e) => {
-        if (e.target === els.savePoseModal) closeSavePoseModal();
-      });
-
-      els.cancelDeleteBtn.addEventListener("click", closeDeleteModal);
-      els.confirmDeleteBtn.addEventListener("click", confirmDeletePose);
-      els.deletePoseModal.addEventListener("click", (e) => {
-        if (e.target === els.deletePoseModal) closeDeleteModal();
-      });
-
-      els.clearLogBtn.addEventListener("click", clearLog);
-    }
-
-    /* =========================================================
-     * 测试模式
-     * ========================================================= */
-    function enterTestMode() {
-      if (!TEST_MODE) return;
-      if (isConnected || isConnecting) {
-        addLog("当前已有真实BLE连接，无法进入测试模式。请先断开连接。", "error");
-        return;
-      }
-      isTestMode = true;
-      currentMode = null;
-      savedPoses = testPoseList.slice();
-      renderCustomPoses();
-      updateUI();
-      updateModeCards();
-      addLog("🧪 已进入测试模式 · 模拟BLE连接", "success");
-      addLog("[测试] 模拟设备已就绪，命令将在本地模拟执行", "test");
-    }
-
-    function exitTestMode() {
-      if (!TEST_MODE) return;
-      if (!isTestMode) return;
-      isTestMode = false;
-      isDebugMode = false;
-      currentMode = null;
-      setActivePose(null);
-      resetJointValues();
-      updateModeCards();
-      updateUI();
-      addLog("已退出测试模式，恢复正常状态。", "info");
-    }
-
-    /* =========================================================
-     * BLE 连接
-     * ========================================================= */
-    async function connectDevice() {
-      if (isConnecting || isConnected) return;
-      if (TEST_MODE && isTestMode) {
-        exitTestMode();
-        addLog("已自动退出测试模式，开始真实蓝牙连接...", "info");
-      }
-      if (!navigator.bluetooth) {
-        addLog("当前浏览器不支持 Web Bluetooth，请使用 Chrome 或 Edge。", "error");
-        return;
-      }
-
-      try {
-        setConnectionState(false, true);
-        addLog("正在请求蓝牙设备...", "info");
-
-        bluetoothDevice = await navigator.bluetooth.requestDevice({
-          filters: [{ name: DEVICE_NAME }],
-          optionalServices: [SERVICE_UUID]
-        });
-        bluetoothDevice.addEventListener("gattserverdisconnected", handleDisconnected);
-        addLog("已选择设备：" + (bluetoothDevice.name || "未知设备"), "info");
-
-        const server = await bluetoothDevice.gatt.connect();
-        addLog("GATT 已连接。", "success");
-
-        const service = await server.getPrimaryService(SERVICE_UUID);
-        bleWriteChar = await service.getCharacteristic(CHARACTERISTIC_UUID);
-        bleNotifyChar = await service.getCharacteristic(NOTIFY_CHARACTERISTIC_UUID);
-        await bleNotifyChar.startNotifications();
-        bleNotifyChar.addEventListener("characteristicvaluechanged", onNotify);
-        addLog("已获取 Write / Notify 特征值，启动通知监听。", "success");
-
-        setConnectionState(true, false);
-        addLog("设备连接成功。停留在首页（未选任何模式）。", "success");
-
-        currentMode = null;
-        updateModeCards();
-        updateModePanels();
-
-        await requestPoseList();
-      } catch (error) {
-        setConnectionState(false, false);
-        addLog("连接失败：" + error.message, "error");
-      }
-    }
-
-    function disconnectDevice() {
-      if (bluetoothDevice && bluetoothDevice.gatt && bluetoothDevice.gatt.connected) {
-        bluetoothDevice.gatt.disconnect();
-      }
-      handleDisconnected();
-    }
-
-    function handleDisconnected() {
-      const wasConnected = isConnected;
-      bluetoothDevice = null;
-      bleWriteChar = null;
-      bleNotifyChar = null;
-      setConnectionState(false, false);
-      els.debugPanel.classList.add("hidden");
-      isDebugMode = false;
-      currentMode = null;
-      setActivePose(null);
-      resetJointValues();
-      savedPoses = [];
-      poseListLoading = false;
-      renderCustomPoses();
-      updateModeCards();
-      if (wasConnected) addLog("设备已断开。", "info");
-    }
-
-    /* =========================================================
-     * 底层写入
-     * ========================================================= */
-    async function writeBytes(bytes) {
-      if (!(bytes instanceof Uint8Array)) bytes = new Uint8Array(bytes);
-      if (TEST_MODE && isTestMode) return true;
-      if (!isConnected || !bleWriteChar) return false;
-      try {
-        await bleWriteChar.writeValue(bytes);
-        return true;
-      } catch (err) {
-        addLog("写入失败：" + err.message, "error");
-        return false;
-      }
-    }
-
-    function bytesToHex(bytes) {
-      return Array.from(bytes).map(b => "0x" + b.toString(16).padStart(2, "0").toUpperCase()).join(" ");
-    }
-
-    function logBytes(bytes, desc) {
-      const arr = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-      const hex = bytesToHex(arr);
-      if (TEST_MODE && isTestMode) {
-        addLog(`[测试] ${desc} → ${hex}`, "test");
-      } else {
-        addLog(`${desc} → ${hex}`, "send");
-      }
-    }
-
-    /* =========================================================
-     * 发送 API
-     * ========================================================= */
-    async function sendAction(cmdId, desc) {
-      const bytes = new Uint8Array([OP_ACTION, cmdId]);
-      logBytes(bytes, `Action: ${desc}`);
-      return writeBytes(bytes);
-    }
-
-    async function sendSlider(jointId, physicalVal) {
-      const clamped = Math.max(0, Math.min(FINGER_JOINTS[jointId].max, physicalVal));
-      const low = clamped & 0xFF;
-      const high = (clamped >> 8) & 0xFF;
-      const bytes = new Uint8Array([OP_SLIDER, jointId, low, high]);
-      logBytes(bytes, `关节${jointId}(${FINGER_JOINTS[jointId].name}) → ${clamped}`);
-      return writeBytes(bytes);
-    }
-
-    // === 修改：保存姿态包扩展为 [0x03, nameLen, ...name, pinyinLen, ...pinyin] ===
-    async function sendSavePose(name, pinyin) {
-      const nameBytes = new TextEncoder().encode(name);
-      const pinyinBytes = new TextEncoder().encode(pinyin);
-      if (nameBytes.length === 0 || nameBytes.length > 20) {
-        addLog("名称长度非法 (需 1-20 字节 UTF-8)", "error");
-        return false;
-      }
-      if (pinyinBytes.length === 0 || pinyinBytes.length > 40) {
-        addLog("拼音长度非法 (需 1-40 字节)", "error");
-        return false;
-      }
-      const packet = new Uint8Array(3 + nameBytes.length + pinyinBytes.length);
-      packet[0] = OP_SAVE_POSE;
-      packet[1] = nameBytes.length;
-      packet.set(nameBytes, 2);
-      packet[2 + nameBytes.length] = pinyinBytes.length;
-      packet.set(pinyinBytes, 3 + nameBytes.length);
-      logBytes(packet, `保存姿态: "${name}" (语音: ${pinyin})`);
-      const ok = await writeBytes(packet);
-      if (TEST_MODE && isTestMode) simulateSavePose(name, pinyin);
-      return ok;
-    }
-
-    async function requestPoseList() {
-      const bytes = new Uint8Array([OP_LIST_POSE]);
-      logBytes(bytes, "请求姿态列表");
-      poseListLoading = true;
-      renderCustomPoses();
-      const ok = await writeBytes(bytes);
-      if (TEST_MODE && isTestMode) simulateListPose();
-      return ok;
-    }
-
-    async function sendTriggerCustom(index, name) {
-      const bytes = new Uint8Array([OP_TRIGGER_POSE, index]);
-      logBytes(bytes, `触发自定义姿态 [${index}] "${name}"`);
-      return writeBytes(bytes);
-    }
-
-    async function sendDeleteCustom(index, name) {
-      const bytes = new Uint8Array([OP_DELETE_POSE, index]);
-      logBytes(bytes, `删除自定义姿态 [${index}] "${name}"`);
-      const ok = await writeBytes(bytes);
-      if (TEST_MODE && isTestMode) simulateDeletePose(index);
-      return ok;
-    }
-
-    /* =========================================================
-     * 接收 Notify 解析
-     * ========================================================= */
-    function decodeUtf8(bytes) {
-      return new TextDecoder().decode(bytes);
-    }
-
-    // === 修改：ENTRY / SAVED 报文包含 pinyin ===
-    // 格式: [opcode, index, nameLen, ...name, pinyinLen, ...pinyin, o0_lo, o0_hi, ..., o6_lo, o6_hi]
-    function parsePoseEntry(data) {
-      const index = data[1];
-      const nameLen = data[2];
-      const nameBytes = data.slice(3, 3 + nameLen);
-      const name = decodeUtf8(nameBytes);
-      let pos = 3 + nameLen;
-
-      // 兼容旧协议：若剩余字节等于 14 (7*2) 说明没有 pinyin 字段
-      let pinyin = "";
-      const remaining = data.length - pos;
-      if (remaining > 14) {
-        const pinyinLen = data[pos++];
-        if (pinyinLen > 0) {
-          pinyin = decodeUtf8(data.slice(pos, pos + pinyinLen));
-          pos += pinyinLen;
-        }
-      }
-
-      const offsets = [];
-      for (let i = 0; i < 7; i++) {
-        const lo = data[pos++];
-        const hi = data[pos++];
-        let v = lo | (hi << 8);
-        if (v & 0x8000) v = v - 0x10000;
-        offsets.push(v);
-      }
-      return { index, name, pinyin, offsets };
-    }
-
-    function onNotify(event) {
-      const data = new Uint8Array(event.target.value.buffer);
-      if (data.length === 0) return;
-      const opcode = data[0];
-
-      if (opcode === NTF_LIST_START) {
-        savedPoses = [];
-        poseListLoading = true;
-        addLog(`[Notify] LIST_START (0x90)`, "recv");
-        renderCustomPoses();
-        return;
-      }
-      if (opcode === NTF_ENTRY || opcode === NTF_SAVED) {
-        const entry = parsePoseEntry(data);
-        const existing = savedPoses.findIndex(p => p.index === entry.index);
-        if (existing >= 0) savedPoses[existing] = entry;
-        else savedPoses.push(entry);
-        savedPoses.sort((a, b) => a.index - b.index);
-        const tag = opcode === NTF_SAVED ? "SAVED (0x93)" : "ENTRY (0x91)";
-        const pyStr = entry.pinyin ? `, pinyin="${entry.pinyin}"` : "";
-        addLog(`[Notify] ${tag} · index=${entry.index}, name="${entry.name}"${pyStr}`, "recv");
-        if (opcode === NTF_SAVED) {
-          closeSavePoseModal();
-          addLog(`✅ 姿态「${entry.name}」已保存到 Flash`, "success");
-        }
-        renderCustomPoses();
-        return;
-      }
-      if (opcode === NTF_LIST_END) {
-        poseListLoading = false;
-        addLog(`[Notify] LIST_END (0x92) · 共 ${savedPoses.length} 个姿态`, "recv");
-        renderCustomPoses();
-        return;
-      }
-      // === 修改：扩展 SAVE_FAIL 原因码 ===
-      if (opcode === NTF_SAVE_FAIL) {
-        const reason = data.length > 1 ? data[1] : 0;
-        const msg = reason === 2 ? "请先进入位姿调试模式" :
-                    reason === 3 ? "Flash 已满或写入错误" :
-                    reason === 4 ? "语音命令词与现有指令冲突" :
-                    reason === 5 ? "名称必须为中文" :
-                    reason === 6 ? "拼音格式无效" :
-                    "名称无效";
-        addLog(`[Notify] SAVE_FAIL (0x94) · ${msg}`, "error");
-        showModalError(msg);
-        return;
-      }
-      if (opcode === NTF_DELETE_FAIL) {
-        addLog(`[Notify] DELETE_FAIL (0x96) · 索引无效或 Flash 写入错误`, "error");
-        return;
-      }
-      addLog(`[Notify] 未知 opcode: 0x${opcode.toString(16)}`, "recv");
-    }
-
-    /* =========================================================
-     * 测试模式本地模拟
-     * ========================================================= */
-    function simulateListPose() {
-      setTimeout(() => {
-        addLog("[Notify] LIST_START (0x90)", "recv");
-        savedPoses = [];
-        renderCustomPoses();
-        testPoseList.forEach((pose, i) => {
-          setTimeout(() => {
-            savedPoses.push({ ...pose });
-            savedPoses.sort((a, b) => a.index - b.index);
-            addLog(`[Notify] ENTRY (0x91) · index=${pose.index}, name="${pose.name}", pinyin="${pose.pinyin}"`, "recv");
-            renderCustomPoses();
-          }, 60 + i * 30);
-        });
-        setTimeout(() => {
-          poseListLoading = false;
-          addLog(`[Notify] LIST_END (0x92) · 共 ${savedPoses.length} 个姿态`, "recv");
-          renderCustomPoses();
-        }, 60 + testPoseList.length * 30 + 40);
-      }, 40);
-    }
-
-    function simulateSavePose(name, pinyin) {
-      if (!isDebugMode) {
-        setTimeout(() => {
-          addLog("[Notify] SAVE_FAIL (0x94) · 请先进入位姿调试模式", "error");
-          showModalError("请先进入位姿调试模式");
-        }, 50);
-        return;
-      }
-       // 新增：上限检查
-        if (savedPoses.length >= MAX_CUSTOM_POSES) {
-          setTimeout(() => {
-            addLog("[Notify] SAVE_FAIL (0x94) · 已到达保存上限", "error");
-          }, 50);
-          return;
-        }
-      const offsets = FINGER_JOINTS.map((j, i) => Math.round((jointPercents[i] / 100) * j.max));
-      const entry = { index: testPoseNextIndex++, name, pinyin, offsets };
-      testPoseList.push(entry);
-      setTimeout(() => {
-        savedPoses.push(entry);
-        savedPoses.sort((a, b) => a.index - b.index);
-        addLog(`[Notify] SAVED (0x93) · index=${entry.index}, name="${entry.name}", pinyin="${entry.pinyin}"`, "recv");
-        addLog(`✅ 姿态「${entry.name}」已保存 (测试模式)`, "success");
-        closeSavePoseModal();
-        renderCustomPoses();
-      }, 60);
-    }
-
-    function simulateDeletePose(index) {
-      testPoseList = testPoseList.filter(p => p.index !== index);
-      setTimeout(() => {
-        savedPoses = savedPoses.filter(p => p.index !== index);
-        addLog(`✅ 姿态 [${index}] 已删除 (测试模式)`, "success");
-        renderCustomPoses();
-      }, 40);
-    }
-
-    /* =========================================================
-     * 连接状态 & UI
-     * ========================================================= */
-    function setConnectionState(connected, connecting) {
-      isConnected = connected;
-      isConnecting = connecting;
-      if (connected && isTestMode) {
-        isTestMode = false;
-        addLog("真实设备已连接，自动退出测试模式。", "info");
-      }
-      updateUI();
-    }
-
-    function updateUI() {
-      const isActive = isConnected || (TEST_MODE && isTestMode);
-      els.connectBtn.disabled = isConnecting || isConnected || (TEST_MODE && isTestMode);
-
-      if (isConnecting) {
-        els.statusIcon.textContent = "🔗";
-        els.statusIcon.className = "status-icon connecting";
-        els.connectionTitle.textContent = "连接中";
-        els.connectionSubtitle.textContent = "正在建立 BLE 通道...";
-        els.connectBtnText.textContent = "正在连接...";
-        els.disconnectBtn.classList.add("hidden");
-        els.testModeBtn.classList.add("hidden");
-        els.exitTestBtn.classList.add("hidden");
-        els.deviceInfo.classList.add("hidden");
-        els.testModeBanner.classList.add("hidden");
-        els.footerStatusText.textContent = "连接中...";
-      } else if (isConnected) {
-        els.statusIcon.textContent = "📡";
-        els.statusIcon.className = "status-icon connected status-ping";
-        els.connectionTitle.textContent = "已连接";
-        els.connectionSubtitle.textContent = "设备在线 · 信号强度优秀";
-        els.connectBtnText.textContent = "已连接";
-        els.connectBtn.classList.add("hidden");
-        els.disconnectBtn.classList.remove("hidden");
-        els.testModeBtn.classList.add("hidden");
-        els.exitTestBtn.classList.add("hidden");
-        els.deviceInfo.classList.remove("hidden");
-        els.deviceName.textContent = (bluetoothDevice && bluetoothDevice.name) ? bluetoothDevice.name : DEVICE_NAME;
-        els.testModeBanner.classList.add("hidden");
-        els.footerStatusText.textContent = "系统正常 · 已连接";
-      } else if (TEST_MODE && isTestMode) {
-        els.statusIcon.textContent = "🧪";
-        els.statusIcon.className = "status-icon test-mode";
-        els.connectionTitle.textContent = "测试模式";
-        els.connectionSubtitle.textContent = "模拟BLE连接 · 功能完整可用";
-        els.connectBtnText.textContent = "连接设备";
-        els.connectBtn.classList.add("hidden");
-        els.disconnectBtn.classList.add("hidden");
-        els.testModeBtn.classList.add("hidden");
-        els.exitTestBtn.classList.remove("hidden");
-        els.deviceInfo.classList.remove("hidden");
-        els.deviceName.textContent = "🧪 模拟设备 (测试模式)";
-        els.testModeBanner.classList.remove("hidden");
-        els.footerStatusText.textContent = "测试模式运行中";
-      } else {
-        els.statusIcon.textContent = "📡";
-        els.statusIcon.className = "status-icon";
-        els.connectionTitle.textContent = "未连接";
-        els.connectionSubtitle.textContent = "等待设备信号...";
-        els.connectBtnText.textContent = "连接设备";
-        els.connectBtn.classList.remove("hidden");
-        els.disconnectBtn.classList.add("hidden");
-        if (TEST_MODE) els.testModeBtn.classList.remove("hidden");
-        else els.testModeBtn.classList.add("hidden");
-        els.exitTestBtn.classList.add("hidden");
-        els.deviceInfo.classList.add("hidden");
-        els.testModeBanner.classList.add("hidden");
-        els.footerStatusText.textContent = "系统正常";
-      }
-
-      els.modeSelector.classList.toggle("hidden", !isActive);
-      els.waitingPanel.classList.toggle("hidden", isActive);
-
-      if (!isActive) {
-        els.homeResetSection.classList.add("hidden");
-        els.cylinderPanel.classList.add("hidden");
-        els.twoFingerPanel.classList.add("hidden");
-        els.posePanel.classList.add("hidden");
-        els.debugPanel.classList.add("hidden");
-      } else {
-        updateModePanels();
-      }
-    }
-
-    /* =========================================================
-     * 模式切换
-     * ========================================================= */
-    function toggleMode(mode) {
-      if (currentMode === mode) {
-        setMode(null);
-      } else {
-        setMode(mode);
-      }
-    }
-
-    async function setMode(newMode) {
-      if (newMode === currentMode) return;
-      const oldMode = currentMode;
-
-      if (oldMode === MODES.DEBUG) {
-        isDebugMode = false;
-        resetJointValues();
-        await sendAction(CMD_DEBUG_EXIT, "退出位姿调试");
-      } else if (oldMode !== null) {
-        if (newMode === null || newMode === MODES.DEBUG) {
-          await sendAction(CMD_MODE_DESEL, "取消当前模式");
-        }
-      }
-
-      if (newMode === MODES.DEBUG) {
-        resetJointValues();
-        await sendAction(CMD_DEBUG_ENTER, "进入位姿调试");
-        isDebugMode = true;
-      } else if (newMode !== null) {
-        await sendAction(MODE_TO_CMD[newMode], "模式: " + MODE_LABEL[newMode]);
-      }
-
-      currentMode = newMode;
-      setActivePose(null);
-      updateModeCards();
-      updateModePanels();
-      const label = newMode === null ? "首页（未选任何模式）" : MODE_LABEL[newMode];
-      addLog("切换模式：" + label, "info");
-    }
-
-    function updateModeCards() {
-      document.querySelectorAll(".mode-card[data-mode]").forEach((btn) => {
-        const active = btn.dataset.mode === currentMode;
-        btn.classList.toggle("active", active);
-        btn.classList.toggle("is-active", active);
-      });
-      if (els.modeHint) {
-        els.modeHint.textContent = currentMode === null
-          ? "当前模式：未选中（手掌完全张开）"
-          : "当前模式：" + MODE_LABEL[currentMode] + " · 再次点击卡片可退回首页";
-      }
-    }
-
-    function updateModePanels() {
-      if (!isConnected && !(TEST_MODE && isTestMode)) return;
-      els.homeResetSection.classList.toggle("hidden", currentMode !== null);
-      els.cylinderPanel.classList.toggle("hidden", currentMode !== MODES.CYLINDER);
-      els.twoFingerPanel.classList.toggle("hidden", currentMode !== MODES.TWO_FINGER);
-      els.posePanel.classList.toggle("hidden", currentMode !== MODES.POSE);
-      els.debugPanel.classList.toggle("hidden", currentMode !== MODES.DEBUG);
-      [els.cylinderPanel, els.twoFingerPanel, els.posePanel, els.debugPanel, els.homeResetSection].forEach((panel) => {
-        if (panel && !panel.classList.contains("hidden")) panel.classList.add("fade-in");
-      });
-    }
-
-    function setActivePose(poseId) {
-      activePose = poseId;
-      document.querySelectorAll(".pose-card[data-pose]").forEach((btn) => {
-        const active = btn.dataset.pose === poseId;
-        btn.classList.toggle("active", active);
-        btn.classList.toggle("is-active", active);
-      });
-    }
-
-    /* =========================================================
-     * 关节滑块
-     * ========================================================= */
-    function renderJointControls() {
-      els.jointList.innerHTML = "";
-      FINGER_JOINTS.forEach((joint, index) => {
-        const row = document.createElement("div");
-        row.className = "joint-row";
-        row.innerHTML = `
-          <div class="joint-meta">
-            <label class="joint-label" for="joint-${joint.id}">
-              <span class="joint-dot" style="background: linear-gradient(135deg, ${joint.from}, ${joint.to});"></span>
-              <span>${joint.name}</span>
-              <span style="color: #64748b;">(${joint.id}) · 量程 0~${joint.max}</span>
-            </label>
-            <div class="joint-value">
-              <span id="joint-phys-${joint.id}">0</span>
-              <span class="joint-pct" id="joint-pct-${joint.id}">0%</span>
+    <!-- 保存数量上限提示弹窗 -->
+    <div id="poseLimitModal" class="overlay-modal" onclick="closePoseLimitModal(event)">
+        <div class="modal-box" onclick="event.stopPropagation()">
+            <h3>无法继续保存</h3>
+            <p style="font-size: 15px; color: #555; margin: 0; text-align: center; line-height: 1.6;">
+                已到达保存上限，删除一些再继续吧
+            </p>
+        </div>
+    </div>
+
+    <!-- 保存姿态命名弹窗 -->
+    <div id="savePoseModal" class="overlay-modal" onclick="closeSavePoseModal(event)">
+        <div class="modal-box" onclick="event.stopPropagation()">
+            <h3>为当前姿态命名</h3>
+            <p style="font-size: 14px; color: #666; margin: 0;">名称必须为中文，系统将自动生成语音命令词拼音并保存到 Flash。</p>
+            <input type="text" id="poseNameInput" maxlength="12" placeholder="例如：点赞手势" oninput="onPoseNameInput()">
+            <p id="pinyinPreview" style="font-size: 14px; color: #555; margin: 0 0 8px;">语音命令词：-</p>
+            <p id="poseNameError" style="font-size: 13px; color: #e74c3c; margin: 0 0 12px; min-height: 18px;"></p>
+            <div class="modal-actions">
+                <button style="background-color: #95a5a6; color: white; border: none;" onclick="closeSavePoseModal()">取消</button>
+                <button id="confirmSavePoseBtn" onclick="confirmSavePose()">确定保存</button>
             </div>
-          </div>
-          <div class="range-shell">
-            <div class="range-fill" id="joint-fill-${joint.id}"
-              style="background: linear-gradient(90deg, ${joint.from}, ${joint.to}); width: 0%;"></div>
-            <div class="range-thumb" id="joint-thumb-${joint.id}" style="left: 0%;"></div>
-            <input id="joint-${joint.id}" class="joint-range" type="range"
-              min="0" max="100" step="1" value="0" data-index="${index}" />
-          </div>
-        `;
-        els.jointList.appendChild(row);
-      });
+        </div>
+    </div>
 
-      document.querySelectorAll(".joint-range").forEach((input) => {
-        input.addEventListener("input", handleJointInput);
-        input.addEventListener("change", handleJointCommit);
-      });
-    }
+    <script src="https://cdn.jsdelivr.net/npm/pinyin-pro@3.26.0/dist/index.js"></script>
+    <script>
+        // 定义我们将在 ESP32 代码中设置的专属 UUID
+        const SERVICE_UUID = '12345678-1234-5678-1234-56789abcdef0';
+        const CHARACTERISTIC_UUID = '12345678-1234-5678-1234-56789abcdef1';
+        const NOTIFY_CHARACTERISTIC_UUID = '12345678-1234-5678-1234-56789abcdef2';
+        let bleCharacteristic = null;
+        let bleNotifyCharacteristic = null;
+        let bleDevice = null;
+        let isDebugMode = false;
+        let activeMode = null;
+        let savedPoses = [];
+        let poseListLoading = false;
+        const POSE_SAVE_LIMIT = 30;
 
-    function handleJointInput(event) {
-      const input = event.target;
-      const index = Number(input.dataset.index);
-      const percent = Number(input.value);
-      jointPercents[index] = percent;
-      updateJointVisual(index);
-      if (sliderTimers[index]) clearTimeout(sliderTimers[index]);
-      sliderTimers[index] = setTimeout(() => commitJoint(index), 30);
-    }
+        const POSE_NOTIFY_HDR_LIST = 0x90;
+        const POSE_NOTIFY_ENTRY = 0x91;
+        const POSE_NOTIFY_LIST_END = 0x92;
+        const POSE_NOTIFY_SAVED = 0x93;
+        const POSE_NOTIFY_SAVE_FAIL = 0x94;
+        const POSE_NOTIFY_DELETE_FAIL = 0x96;
 
-    function handleJointCommit(event) {
-      const input = event.target;
-      const index = Number(input.dataset.index);
-      if (sliderTimers[index]) clearTimeout(sliderTimers[index]);
-      commitJoint(index);
-    }
+        const RESERVED_PINYINS = [
+            'zhua wo', 'wo quan', 'song kai', 'chong xin gui ling',
+            'yuan zhu mo shi', 'er zhi mo shi', 'biao yan mo shi',
+            'yuan zhu zhua wo', 'er zhi zhua wo',
+            'shen shi zhi', 'ou ke shou shi', 'ye shou shi', 'wo ai ni'
+        ];
 
-    function commitJoint(index) {
-      if (!isDebugMode) return;
-      const joint = FINGER_JOINTS[index];
-      const physical = Math.round((jointPercents[index] / 100) * joint.max);
-      sendSlider(joint.id, physical);
-    }
+        const HAND_PROTO_HEADER = 0x0F;
+        const HAND_PROTO_FOOTER = 0xF0;
+        const HAND_PROTO_HAND_ID = 0x01;
+        const HAND_PROTO_MODE_CTRL = 0x01;
+        const HAND_PROTO_MODE_PRESET = 0x02;
+        const HAND_PROTO_MODE_MGMT = 0x03;
 
-    function updateJointVisual(index) {
-      const joint = FINGER_JOINTS[index];
-      const percent = jointPercents[index];
-      const physical = Math.round((percent / 100) * joint.max);
-      const physEl = document.getElementById("joint-phys-" + joint.id);
-      const pctEl = document.getElementById("joint-pct-" + joint.id);
-      const fillEl = document.getElementById("joint-fill-" + joint.id);
-      const thumbEl = document.getElementById("joint-thumb-" + joint.id);
-      const inputEl = document.getElementById("joint-" + joint.id);
-      if (physEl) physEl.textContent = physical;
-      if (pctEl) pctEl.textContent = percent + "%";
-      if (fillEl) fillEl.style.width = percent + "%";
-      if (thumbEl) thumbEl.style.left = percent + "%";
-      if (inputEl && inputEl.value != percent) inputEl.value = percent;
-    }
+        const HAND_PRESET_POWER = 0x01;
+        const HAND_PRESET_PINCH = 0x02;
+        const HAND_PRESET_POSE = 0x03;
 
-    function resetJointValues() {
-      jointPercents = FINGER_JOINTS.map(() => 0);
-      FINGER_JOINTS.forEach((_, index) => updateJointVisual(index));
-    }
+        const HAND_CTRL_SIMPLE = 0x01;
+        const HAND_JOINT_SINGLE = 0x01;
 
-    /* =========================================================
-     * 自定义姿态渲染
-     * ========================================================= */
-    function renderCustomPoses() {
-      const grid = els.customPoseGrid;
-      grid.innerHTML = "";
-      els.customPoseCount.textContent = `${savedPoses.length} / ${MAX_CUSTOM_POSES} 个`;
+        const HAND_MGMT_SAVE_POSE = 0x01;
+        const HAND_MGMT_LIST_POSES = 0x02;
+        const HAND_MGMT_TRIGGER_POSE = 0x03;
+        const HAND_MGMT_DELETE_POSE = 0x04;
+        const HAND_MGMT_HOMING = 0x05;
+        const HAND_MGMT_PINCH_REHOME = 0x06;
+        const HAND_MGMT_DEBUG_ENTER = 0x10;
+        const HAND_MGMT_DEBUG_EXIT = 0x11;
+        const HAND_MGMT_OPEN_PALM = 0x12;
 
-      if (poseListLoading && savedPoses.length === 0) {
-        els.customPoseEmpty.classList.remove("hidden");
-        els.customPoseEmpty.textContent = "正在从设备加载自定义姿态...";
-        return;
-      }
-      if (savedPoses.length === 0) {
-        els.customPoseEmpty.classList.remove("hidden");
-        els.customPoseEmpty.textContent = "暂无自定义姿态。进入「位姿调试」调整后点击「记录并保存」即可添加。";
-        return;
-      }
-      els.customPoseEmpty.classList.add("hidden");
+        const modeNames = ['圆柱抓握', '二指抓握', 'Pose展示'];
 
-      savedPoses.forEach((pose) => {
-        const key = "custom_" + pose.index;
-        const card = document.createElement("button");
-        card.type = "button";
-        card.className = "pose-card custom";
-        card.dataset.pose = key;
-        card.title = pose.pinyin ? `语音命令词：${pose.pinyin}` : "左键执行 · 右键删除";
-        const descText = pose.pinyin
-          ? `🎙️ ${escapeHtml(pose.pinyin)}`
-          : `index=${pose.index}`;
-        card.innerHTML = `
-          <span class="delete-btn" title="删除">✕</span>
-          <span class="pose-icon">⭐</span>
-          <div class="pose-title">${escapeHtml(pose.name)}</div>
-          <div class="pose-desc">${descText}</div>
-        `;
-        card.querySelector(".delete-btn").addEventListener("click", (e) => {
-          e.stopPropagation();
-          openDeleteModal(pose.index, pose.name);
-        });
-        card.addEventListener("click", () => {
-          setActivePose(key);
-          sendTriggerCustom(pose.index, pose.name);
-        });
-        if (activePose === key) card.classList.add("active", "is-active");
-        grid.appendChild(card);
-      });
-    }
+        const fingerNames = [
+            "拇指外展(0)", "拇指弯曲(1)", "拇指根部(2)",
+            "食指(3)", "中指(4)", "无名指(5)", "小指(6)"
+        ];
 
-    /* =========================================================
-     * 名称/拼音 校验（新增核心逻辑）
-     * ========================================================= */
-    function normalizePinyin(pinyin) {
-      return String(pinyin || "").toLowerCase().trim().replace(/\s+/g, " ");
-    }
+        // 各关节调试量程（与 homing_ready.c READY_BACKOFF 一致）：0=张开准备姿态，最大=握拳方向
+        const fingerRanges = [
+            1206,  // 拇指外展(0)
+            1324,  // 拇指弯曲(1)
+            1371,  // 拇指根部(2)
+            3321,  // 食指(3)
+            3369,  // 中指(4)
+            3511,  // 无名指(5)
+            3298,  // 小指(6)
+        ];
 
-    function isChineseOnly(name) {
-      return /^[\u4e00-\u9fff]+$/.test(name);
-    }
+        function clampSliderValue(id, val) {
+            return Math.min(fingerRanges[id], Math.max(0, val));
+        }
 
-    function nameToPinyin(name) {
-      if (typeof pinyinPro === "undefined") return "";
-      try {
-        return normalizePinyin(pinyinPro.pinyin(name, { toneType: "none", type: "string" }));
-      } catch (e) {
-        console.error("pinyin-pro 生成失败:", e);
-        return "";
-      }
-    }
+        function visualToPhysical(id, visual) {
+            return Math.round((visual / 100) * fingerRanges[id]);
+        }
 
-    function isPinyinTaken(pinyin) {
-      const norm = normalizePinyin(pinyin);
-      if (!norm) return true;
-      if (RESERVED_PINYINS.includes(norm)) return true;
-      return savedPoses.some(p => p.pinyin && normalizePinyin(p.pinyin) === norm);
-    }
+        // 初始化滑块
+        function initSliders() {
+            const container = document.getElementById('sliders');
+            container.innerHTML = '';
+            for (let i = 0; i < 7; i++) {
+                const div = document.createElement('div');
+                div.className = 'slider-container';
+                div.innerHTML = `
+                    <label>${fingerNames[i]}:</label>
+                    <input type="range" id="slider_${i}" min="0" max="100" step="1" value="0" oninput="onSliderChange(${i})" onchange="onSliderChange(${i})">
+                    <span id="val_${i}" class="val-num">0</span>
+                    <span id="pct_${i}" class="val-pct">0%</span>
+                `;
+                container.appendChild(div);
+            }
+        }
 
-    /**
-     * 综合校验：返回 { ok, msg, pinyin }
-     */
-    function validatePoseName(name) {
-      if (!name) {
-        return { ok: false, msg: "", pinyin: "" };
-      }
-      if (!isChineseOnly(name)) {
-        return { ok: false, msg: "名称只能包含中文汉字", pinyin: "" };
-      }
-      const byteLen = new TextEncoder().encode(name).length;
-      if (byteLen > 20) {
-        return { ok: false, msg: `名称过长（当前 ${byteLen} 字节，需 ≤20 字节 UTF-8）`, pinyin: "" };
-      }
-      const pinyin = nameToPinyin(name);
-      if (!pinyin) {
-        return { ok: false, msg: "无法生成拼音，请检查输入", pinyin: "" };
-      }
-      if (savedPoses.some(p => p.name === name)) {
-        return { ok: false, msg: "已存在同名姿态，请更换名称", pinyin };
-      }
-      if (isPinyinTaken(pinyin)) {
-        return { ok: false, msg: `语音命令词「${pinyin}」与现有指令冲突`, pinyin };
-      }
-      return { ok: true, msg: "", pinyin };
-    }
+        async function connectBLE() {
+            try {
+                document.getElementById('status').innerText = "状态: 正在搜索蓝牙设备...";
+                // 请求连接设备（过滤名称为 "ESP32_Hand" 的设备）
+                bleDevice = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: 'ESP32_Hand' }],
+                    optionalServices: [SERVICE_UUID]
+                });
 
-    /* =========================================================
-     * 保存弹窗
-     * ========================================================= */
-    function openSavePoseModal() {
-      if (!isDebugMode) {
-        addLog("请先进入位姿调试模式，才能保存姿态。", "error");
-        return;
-      }
-      // ========== 新增：数量上限检查 ==========
-      if (savedPoses.length >= MAX_CUSTOM_POSES) {
-        addLog(`自定义姿态已满（上限 ${MAX_CUSTOM_POSES} 个），请先删除不再需要的姿态。`, "error");
-        return;   // 不弹窗，直接阻止
-      }
-      // ========================================
-      els.poseNameInput.value = "";
-      els.pinyinPreview.textContent = "-";
-      els.pinyinPreview.classList.add("placeholder");
-      els.poseNameError.textContent = "";
-      els.poseNameError.classList.add("hidden");
-      els.confirmSavePoseBtn.disabled = true;
-      els.savePoseModal.classList.remove("hidden");
-      setTimeout(() => els.poseNameInput.focus(), 50);
-    }
+                document.getElementById('status').innerText = "状态: 正在连接 GATT 服务器...";
+                const server = await bleDevice.gatt.connect();
+                
+                const service = await server.getPrimaryService(SERVICE_UUID);
+                bleCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
+                bleNotifyCharacteristic = await service.getCharacteristic(NOTIFY_CHARACTERISTIC_UUID);
+                await bleNotifyCharacteristic.startNotifications();
+                bleNotifyCharacteristic.addEventListener('characteristicvaluechanged', onPoseNotify);
 
-    function closeSavePoseModal() {
-      els.savePoseModal.classList.add("hidden");
-    }
+                document.getElementById('status').innerText = "状态: ✅ 已成功连接灵巧手！";
+                document.getElementById('connectBtn').style.display = 'none';
+                
+                // 显示控制按钮
+                document.querySelectorAll('.cmdBtn').forEach(btn => btn.style.display = 'inline-block');
+                document.querySelectorAll('.debugBtn').forEach(btn => btn.style.display = 'inline-block');
+                document.querySelectorAll('.modeBtn').forEach(btn => btn.style.display = 'inline-block');
+                updateModeUI(activeMode);
 
-    // 实时输入回调：更新拼音预览 + 校验按钮
-    function onPoseNameInput() {
-      const name = els.poseNameInput.value.trim();
-      const result = validatePoseName(name);
+                initSliders();
+                requestPoseList();
 
-      // 拼音预览
-      if (result.pinyin) {
-        els.pinyinPreview.textContent = result.pinyin;
-        els.pinyinPreview.classList.remove("placeholder");
-      } else {
-        els.pinyinPreview.textContent = "-";
-        els.pinyinPreview.classList.add("placeholder");
-      }
+                // 监听断开连接
+                bleDevice.addEventListener('gattserverdisconnected', () => {
+                    document.getElementById('status').innerText = "状态: ❌ 连接已断开";
+                    document.getElementById('connectBtn').style.display = 'inline-block';
+                    document.querySelectorAll('.cmdBtn').forEach(btn => btn.style.display = 'none');
+                    document.querySelectorAll('.debugBtn').forEach(btn => btn.style.display = 'none');
+                    document.getElementById('debugPanel').style.display = 'none';
+                    document.getElementById('posePanel').style.display = 'none';
+                    closeSavePoseModal();
+                    isDebugMode = false;
+                    activeMode = null;
+                    savedPoses = [];
+                    bleCharacteristic = null;
+                    bleNotifyCharacteristic = null;
+                    renderCustomPoseButtons();
+                    updateModeUI(null);
+                });
 
-      // 错误提示
-      if (result.msg) {
-        els.poseNameError.textContent = result.msg;
-        els.poseNameError.classList.remove("hidden");
-      } else {
-        els.poseNameError.textContent = "";
-        els.poseNameError.classList.add("hidden");
-      }
+            } catch (error) {
+                console.error(error);
+                document.getElementById('status').innerText = "状态: 连接失败或被取消";
+            }
+        }
 
-      // 按钮状态
-      els.confirmSavePoseBtn.disabled = !result.ok;
-    }
+        function buildFrame(mode, payloadBytes) {
+            const payload = payloadBytes instanceof Uint8Array
+                ? payloadBytes
+                : new Uint8Array(payloadBytes);
+            const frame = new Uint8Array(5 + payload.length);
+            frame[0] = HAND_PROTO_HEADER;
+            frame[1] = HAND_PROTO_HAND_ID;
+            frame[2] = mode;
+            frame[3] = payload.length;
+            frame.set(payload, 4);
+            frame[4 + payload.length] = HAND_PROTO_FOOTER;
+            return frame;
+        }
 
-    // 弹窗内展示后端/额外错误
-    function showModalError(msg) {
-      if (els.savePoseModal.classList.contains("hidden")) return;
-      els.poseNameError.textContent = msg;
-      els.poseNameError.classList.remove("hidden");
-      els.confirmSavePoseBtn.disabled = true;
-    }
+        async function sendProtocol(mode, payload) {
+            if (!bleCharacteristic) return;
+            try {
+                const frame = buildFrame(mode, payload);
+                await bleCharacteristic.writeValue(frame);
+                console.log('已发送协议帧', Array.from(frame).map(b => b.toString(16).padStart(2, '0')).join(' '));
+            } catch (error) {
+                console.error('发送协议帧失败', error);
+            }
+        }
 
-    async function confirmSavePose() {
-      if (els.confirmSavePoseBtn.disabled) return;
-      const name = els.poseNameInput.value.trim();
-      const result = validatePoseName(name);
-      if (!result.ok) {
-        showModalError(result.msg || "校验失败，请检查名称");
-        return;
-      }
-      await sendSavePose(name, result.pinyin);
-      addLog(`正在保存姿态「${name}」（语音: ${result.pinyin}），等待设备响应...`, "info");
-    }
+        async function sendPreset(presetType, enable, extraBytes = []) {
+            const payload = [presetType, enable ? 0x01 : 0x00, ...extraBytes];
+            await sendProtocol(HAND_PROTO_MODE_PRESET, payload);
+        }
 
-    /* =========================================================
-     * 删除弹窗
-     * ========================================================= */
-    function openDeleteModal(index, name) {
-      pendingDeleteIndex = index;
-      els.deletePoseName.textContent = name;
-      els.deletePoseModal.classList.remove("hidden");
-    }
+        async function sendMgmt(subCmd, extraBytes = []) {
+            await sendProtocol(HAND_PROTO_MODE_MGMT, [subCmd, ...extraBytes]);
+        }
 
-    function closeDeleteModal() {
-      pendingDeleteIndex = null;
-      els.deletePoseModal.classList.add("hidden");
-    }
+        async function sendGrasp() {
+            if (activeMode === 0) {
+                await sendPreset(HAND_PRESET_POWER, true);
+            } else if (activeMode === 1) {
+                await sendPreset(HAND_PRESET_PINCH, true);
+            } else {
+                alert('请先选择圆柱或二指抓握模式');
+            }
+        }
 
-    async function confirmDeletePose() {
-      if (pendingDeleteIndex === null) return;
-      const idx = pendingDeleteIndex;
-      const pose = savedPoses.find(p => p.index === idx);
-      const name = pose ? pose.name : "未知";
-      closeDeleteModal();
-      await sendDeleteCustom(idx, name);
-      addLog(`已发送删除命令 [${idx}] "${name}"`, "info");
-    }
+        async function sendRelease() {
+            if (activeMode === 0) {
+                await sendPreset(HAND_PRESET_POWER, false);
+            } else if (activeMode === 1) {
+                await sendPreset(HAND_PRESET_PINCH, false);
+            } else if (activeMode === 2) {
+                await sendPreset(HAND_PRESET_POSE, false);
+            } else {
+                await sendMgmt(HAND_MGMT_OPEN_PALM);
+            }
+        }
 
-    /* =========================================================
-     * 日志
-     * ========================================================= */
-    function addLog(message, type = "info") {
-      const empty = els.logBox.querySelector(".log-empty");
-      if (empty) empty.remove();
-      const time = new Date().toLocaleTimeString("zh-CN", {
-        hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit"
-      });
-      const entry = document.createElement("div");
-      entry.className = "log-entry";
-      const typeClass = {
-        info: "log-info", success: "log-success", error: "log-error",
-        send: "log-send", recv: "log-recv", test: "log-test"
-      }[type] || "log-info";
-      entry.innerHTML = `
-        <span class="log-time">[${time}]</span>
-        <span class="${typeClass}">${escapeHtml(message)}</span>
-      `;
-      els.logBox.appendChild(entry);
-      els.logBox.scrollTop = els.logBox.scrollHeight;
-    }
+        async function sendHoming() {
+            await sendMgmt(HAND_MGMT_HOMING);
+        }
 
-    function clearLog() {
-      els.logBox.innerHTML = `<div class="log-empty">暂无日志。</div>`;
-    }
+        async function sendPinchRehome() {
+            await sendMgmt(HAND_MGMT_PINCH_REHOME);
+        }
 
-    function escapeHtml(str) {
-      return String(str)
-        .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;").replaceAll("'", "&#039;");
-    }
-  </script>
+        async function sendBuiltinPose(poseId) {
+            await sendPreset(HAND_PRESET_POSE, true, [poseId]);
+        }
+
+        async function enterPoseMode() {
+            await sendPreset(HAND_PRESET_POSE, true);
+        }
+
+        // 切换/取消模式（再次点击同一按钮即取消）
+        function updateDebugEntryVisibility() {
+            const enterDebugBtn = document.getElementById('enterDebugBtn');
+            const canEnterDebug = activeMode === null && !isDebugMode;
+            enterDebugBtn.style.display = canEnterDebug ? 'inline-block' : 'none';
+        }
+
+        function updateModeUI(mode) {
+            const graspControls = document.getElementById('graspControls');
+            const posePanel = document.getElementById('posePanel');
+            const indexRehomeBtn = document.getElementById('indexRehomeBtn');
+            const modeHint = document.getElementById('modeHint');
+
+            document.getElementById('modePower').classList.toggle('active', mode === 0);
+            document.getElementById('modePinch').classList.toggle('active', mode === 1);
+            document.getElementById('modePose').classList.toggle('active', mode === 2);
+            updateDebugEntryVisibility();
+
+            if (mode === null) {
+                modeHint.innerText = '当前模式: 未选中（手掌完全张开）';
+                graspControls.style.display = 'none';
+                posePanel.style.display = 'none';
+                document.querySelectorAll('.poseBtn').forEach(btn => btn.style.display = 'none');
+                document.querySelectorAll('.customPoseBtn').forEach(btn => btn.style.display = 'none');
+                return;
+            }
+
+            modeHint.innerText = '当前模式: ' + modeNames[mode];
+
+            if (mode === 2) {
+                graspControls.style.display = 'none';
+                posePanel.style.display = 'block';
+                document.querySelectorAll('.poseBtn').forEach(btn => btn.style.display = 'inline-block');
+                renderCustomPoseButtons();
+            } else {
+                graspControls.style.display = 'block';
+                posePanel.style.display = 'none';
+                document.querySelectorAll('.poseBtn').forEach(btn => btn.style.display = 'none');
+                document.querySelectorAll('.customPoseBtn').forEach(btn => btn.style.display = 'none');
+                indexRehomeBtn.style.display = (mode === 1) ? 'inline-block' : 'none';
+            }
+        }
+
+        function toggleMode(mode) {
+            if (activeMode === mode) {
+                activeMode = null;
+                sendRelease();
+            } else {
+                activeMode = mode;
+                if (mode === 2) {
+                    enterPoseMode();
+                }
+            }
+            updateModeUI(activeMode);
+        }
+
+        // 调试滑块：控制模式-简易-单关节，偏置 0~100%
+        async function sendSliderData(id, percent) {
+            if (!bleCharacteristic || !isDebugMode) return;
+            try {
+                const payload = [HAND_CTRL_SIMPLE, HAND_JOINT_SINGLE, id, percent];
+                await sendProtocol(HAND_PROTO_MODE_CTRL, payload);
+            } catch (error) {
+                console.error("发送 Slider 数据失败", error);
+            }
+        }
+
+        // 节流定时器，避免滑块滑动时发送频率过高导致蓝牙拥塞
+        let sliderTimeouts = {};
+        function onSliderChange(id) {
+            const slider = document.getElementById(`slider_${id}`);
+            const visual = parseInt(slider.value, 10);
+            const val = visualToPhysical(id, visual);
+            document.getElementById(`val_${id}`).innerText = val;
+            document.getElementById(`pct_${id}`).innerText = `${visual}%`;
+            
+            if (sliderTimeouts[id]) {
+                clearTimeout(sliderTimeouts[id]);
+            }
+            sliderTimeouts[id] = setTimeout(() => {
+                const percent = parseInt(slider.value, 10);
+                sendSliderData(id, percent);
+            }, 30); // 30ms 节流
+        }
+
+        function enterDebugMode() {
+            if (activeMode !== null) {
+                alert('请先取消当前模式，再进入位姿调试');
+                return;
+            }
+            // 重置滑块：最左侧 = 张开准备姿态 (offset 0)
+            for (let i = 0; i < 7; i++) {
+                document.getElementById(`slider_${i}`).value = 0;
+                document.getElementById(`val_${i}`).innerText = 0;
+                document.getElementById(`pct_${i}`).innerText = '0%';
+            }
+            sendMgmt(HAND_MGMT_DEBUG_ENTER);
+            isDebugMode = true;
+            document.getElementById('debugPanel').style.display = 'block';
+            updateDebugEntryVisibility();
+        }
+
+        function exitDebugMode() {
+            sendMgmt(HAND_MGMT_DEBUG_EXIT);
+            isDebugMode = false;
+            document.getElementById('debugPanel').style.display = 'none';
+            closeSavePoseModal();
+            updateDebugEntryVisibility();
+        }
+
+        function normalizePinyin(pinyin) {
+            return pinyin.toLowerCase().trim().replace(/\s+/g, ' ');
+        }
+
+        function isChineseOnly(name) {
+            return /^[\u4e00-\u9fff]+$/.test(name);
+        }
+
+        function nameToPinyin(name) {
+            if (typeof pinyinPro === 'undefined') {
+                return '';
+            }
+            return normalizePinyin(pinyinPro.pinyin(name, { toneType: 'none', type: 'string' }));
+        }
+
+        function isPinyinTaken(pinyin) {
+            const norm = normalizePinyin(pinyin);
+            if (!norm) return true;
+            if (RESERVED_PINYINS.includes(norm)) return true;
+            return savedPoses.some(p => p.pinyin && normalizePinyin(p.pinyin) === norm);
+        }
+
+        function validatePoseName(name) {
+            if (!name) {
+                return { ok: false, msg: '请输入中文名称', pinyin: '' };
+            }
+            if (!isChineseOnly(name)) {
+                return { ok: false, msg: '名称只能包含中文汉字', pinyin: '' };
+            }
+            const pinyin = nameToPinyin(name);
+            if (!pinyin) {
+                return { ok: false, msg: '无法生成拼音，请检查输入', pinyin: '' };
+            }
+            if (isPinyinTaken(pinyin)) {
+                return { ok: false, msg: `语音命令词「${pinyin}」与现有命令冲突，请换个名称`, pinyin };
+            }
+            return { ok: true, msg: '', pinyin };
+        }
+
+        function encodeUtf8(str) {
+            return new TextEncoder().encode(str);
+        }
+
+        function decodeUtf8(bytes) {
+            return new TextDecoder().decode(bytes);
+        }
+
+        function parsePoseEntry(data, offset) {
+            const index = data[offset + 1];
+            const nameLen = data[offset + 2];
+            const nameBytes = data.slice(offset + 3, offset + 3 + nameLen);
+            const name = decodeUtf8(nameBytes);
+            let pos = offset + 3 + nameLen;
+            let pinyin = '';
+            if (pos < data.length) {
+                const pinyinLen = data[pos++];
+                if (pinyinLen > 0) {
+                    pinyin = decodeUtf8(data.slice(pos, pos + pinyinLen));
+                    pos += pinyinLen;
+                }
+            }
+            const offsets = [];
+            for (let i = 0; i < 7; i++) {
+                const lo = data[pos++];
+                const hi = data[pos++];
+                let v = lo | (hi << 8);
+                if (v & 0x8000) v = v - 0x10000;
+                offsets.push(v);
+            }
+            return { index, name, pinyin, offsets, nextPos: pos };
+        }
+
+        function onPoseNotify(event) {
+            const data = new Uint8Array(event.target.value.buffer);
+            if (data.length === 0) return;
+
+            const opcode = data[0];
+            if (opcode === POSE_NOTIFY_HDR_LIST) {
+                savedPoses = [];
+                poseListLoading = true;
+                return;
+            }
+            if (opcode === POSE_NOTIFY_ENTRY || opcode === POSE_NOTIFY_SAVED) {
+                const entry = parsePoseEntry(data, 0);
+                const existing = savedPoses.findIndex(p => p.index === entry.index);
+                if (existing >= 0) {
+                    savedPoses[existing] = entry;
+                } else {
+                    savedPoses.push(entry);
+                }
+                savedPoses.sort((a, b) => a.index - b.index);
+                if (opcode === POSE_NOTIFY_SAVED) {
+                    closeSavePoseModal();
+                    document.getElementById('status').innerText = `状态: ✅ 已保存姿态「${entry.name}」`;
+                }
+                renderCustomPoseButtons();
+                return;
+            }
+            if (opcode === POSE_NOTIFY_LIST_END) {
+                poseListLoading = false;
+                renderCustomPoseButtons();
+                return;
+            }
+            if (opcode === POSE_NOTIFY_SAVE_FAIL) {
+                const reason = data.length > 1 ? data[1] : 0;
+                const msg = reason === 2 ? '请先进入位姿调试模式' :
+                            reason === 4 ? '语音拼音与现有命令词冲突' :
+                            reason === 5 ? '名称必须为中文' :
+                            reason === 6 ? '拼音格式无效' :
+                            reason === 3 ? '保存失败：Flash 已满或写入错误' :
+                            '保存失败：名称无效';
+                alert(msg);
+                return;
+            }
+            if (opcode === POSE_NOTIFY_DELETE_FAIL) {
+                alert('删除失败：索引无效或 Flash 写入错误');
+            }
+        }
+
+        async function requestPoseList() {
+            if (!bleCharacteristic) return;
+            try {
+                await sendMgmt(HAND_MGMT_LIST_POSES);
+            } catch (error) {
+                console.error('请求姿态列表失败', error);
+            }
+        }
+
+        function renderCustomPoseButtons() {
+            const container = document.getElementById('customPoseButtons');
+            const hint = document.getElementById('poseHint');
+            container.innerHTML = '';
+
+            savedPoses.forEach(pose => {
+                const btn = document.createElement('button');
+                btn.className = 'customPoseBtn';
+                btn.innerText = `⭐ ${pose.name}`;
+                btn.title = pose.pinyin ? `语音: ${pose.pinyin} | 左键执行，右键删除` : '左键：执行 | 右键：删除';
+                btn.onclick = () => sendCustomPoseTrigger(pose.index);
+                btn.oncontextmenu = (e) => {
+                    e.preventDefault();
+                    deletePose(pose.index, pose.name);
+                    return false;
+                };
+                btn.style.display = (activeMode === 2) ? 'inline-block' : 'none';
+                container.appendChild(btn);
+            });
+
+            if (savedPoses.length === 0 && !poseListLoading) {
+                hint.innerText = '暂无自定义姿态（可在位姿调试中保存）';
+            } else if (poseListLoading) {
+                hint.innerText = '正在加载自定义姿态...';
+            } else {
+                hint.innerText = `共 ${savedPoses.length}/${POSE_SAVE_LIMIT} 个自定义姿态（右键可删除）`;
+            }
+        }
+
+        async function sendCustomPoseTrigger(index) {
+            if (!bleCharacteristic) return;
+            try {
+                await sendMgmt(HAND_MGMT_TRIGGER_POSE, [index]);
+            } catch (error) {
+                console.error('触发自定义姿态失败', error);
+            }
+        }
+
+        async function deletePose(index, name) {
+            if (!bleCharacteristic) return;
+            if (!confirm(`确定删除姿态「${name}」？\n此操作会从 Flash 永久移除。`)) {
+                return;
+            }
+            try {
+                await sendMgmt(HAND_MGMT_DELETE_POSE, [index]);
+                document.getElementById('status').innerText = `状态: 正在删除「${name}」...`;
+            } catch (error) {
+                console.error('删除姿态失败', error);
+                alert('删除失败，请重试');
+            }
+        }
+
+        function openSavePoseModal() {
+            if (!isDebugMode) {
+                alert('请先进入位姿调试模式');
+                return;
+            }
+            if (savedPoses.length >= POSE_SAVE_LIMIT) {
+                document.getElementById('poseLimitModal').classList.add('show');
+                return;
+            }
+            document.getElementById('poseNameInput').value = '';
+            document.getElementById('pinyinPreview').innerText = '语音命令词：-';
+            document.getElementById('poseNameError').innerText = '';
+            onPoseNameInput();
+            document.getElementById('savePoseModal').classList.add('show');
+        }
+
+        function closeSavePoseModal(event) {
+            if (event && event.target !== event.currentTarget) return;
+            document.getElementById('savePoseModal').classList.remove('show');
+        }
+
+        function closePoseLimitModal(event) {
+            if (event && event.target !== event.currentTarget) return;
+            document.getElementById('poseLimitModal').classList.remove('show');
+        }
+
+        function onPoseNameInput() {
+            const name = document.getElementById('poseNameInput').value.trim();
+            const btn = document.getElementById('confirmSavePoseBtn');
+            const preview = document.getElementById('pinyinPreview');
+            const errBox = document.getElementById('poseNameError');
+            const result = validatePoseName(name);
+
+            if (!name) {
+                preview.innerText = '语音命令词：-';
+                errBox.innerText = '';
+                btn.classList.remove('enabled');
+                return;
+            }
+
+            preview.innerText = result.pinyin ? `语音命令词：${result.pinyin}` : '语音命令词：-';
+            errBox.innerText = result.ok ? '' : result.msg;
+            if (result.ok) {
+                btn.classList.add('enabled');
+            } else {
+                btn.classList.remove('enabled');
+            }
+        }
+
+        async function confirmSavePose() {
+            const btn = document.getElementById('confirmSavePoseBtn');
+            if (!btn.classList.contains('enabled') || !bleCharacteristic) return;
+
+            const name = document.getElementById('poseNameInput').value.trim();
+            const result = validatePoseName(name);
+            if (!result.ok) {
+                document.getElementById('poseNameError').innerText = result.msg;
+                return;
+            }
+
+            const nameBytes = encodeUtf8(name);
+            const pinyinBytes = encodeUtf8(result.pinyin);
+            if (nameBytes.length === 0 || nameBytes.length > 20) {
+                alert('名称过长，请控制在 20 字节以内');
+                return;
+            }
+            if (pinyinBytes.length === 0 || pinyinBytes.length > 40) {
+                alert('生成的拼音过长，请缩短名称');
+                return;
+            }
+
+            try {
+                const mgmtPayload = new Uint8Array(1 + 1 + nameBytes.length + 1 + pinyinBytes.length);
+                let pos = 0;
+                mgmtPayload[pos++] = HAND_MGMT_SAVE_POSE;
+                mgmtPayload[pos++] = nameBytes.length;
+                mgmtPayload.set(nameBytes, pos);
+                pos += nameBytes.length;
+                mgmtPayload[pos++] = pinyinBytes.length;
+                mgmtPayload.set(pinyinBytes, pos);
+                await bleCharacteristic.writeValue(buildFrame(HAND_PROTO_MODE_MGMT, mgmtPayload));
+                document.getElementById('status').innerText = '状态: 正在保存姿态...';
+            } catch (error) {
+                console.error('保存姿态失败', error);
+                alert('保存失败，请重试');
+            }
+        }
+
+    </script>
 </body>
 </html>
