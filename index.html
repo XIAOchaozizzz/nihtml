@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <title>灵巧手 WebBLE 控制台</title>
     <style>
         body { font-family: Arial, sans-serif; text-align: center; margin-top: 20px; }
@@ -208,7 +209,6 @@
         ];
 
         const HAND_PROTO_HEADER = 0x0F;
-        const HAND_PROTO_FOOTER = 0xF0;
         const HAND_PROTO_HAND_ID = 0x01;
         const HAND_PROTO_MODE_CTRL = 0x01;
         const HAND_PROTO_MODE_PRESET = 0x02;
@@ -328,6 +328,14 @@
             }
         }
 
+        function calcChecksum(frame, frameLen) {
+            let sum = 0;
+            for (let i = 0; i + 1 < frameLen; i++) {
+                sum += frame[i];
+            }
+            return (~sum) & 0xFF;
+        }
+
         function buildFrame(mode, payloadBytes) {
             const payload = payloadBytes instanceof Uint8Array
                 ? payloadBytes
@@ -338,7 +346,7 @@
             frame[2] = mode;
             frame[3] = payload.length;
             frame.set(payload, 4);
-            frame[4 + payload.length] = HAND_PROTO_FOOTER;
+            frame[4 + payload.length] = calcChecksum(frame, frame.length);
             return frame;
         }
 
